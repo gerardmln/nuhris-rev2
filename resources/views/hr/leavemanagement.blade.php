@@ -1,0 +1,244 @@
+@extends('hr.layout')
+
+@php
+    $pageTitle = 'Leave Management';
+    $pageHeading = 'Leave Management';
+    $activeNav = 'leave';
+@endphp
+
+@section('content')
+    <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+            <p class="text-sm text-slate-500">Import leave applications (.xlsx) and view employee leave data</p>
+        </div>
+        <div class="flex items-center gap-2">
+            <button data-open-modal="upload-leaves-modal" class="rounded-lg bg-[#00386f] px-4 py-2 text-sm font-semibold text-white hover:bg-[#002f5d]">Upload Leave File</button>
+        </div>
+    </div>
+
+    @if (session('success'))
+        <div class="rounded-lg border border-emerald-300 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">{{ session('success') }}</div>
+    @endif
+    @if (session('error'))
+        <div class="rounded-lg border border-red-300 bg-red-50 px-4 py-3 text-sm text-red-800">{{ session('error') }}</div>
+    @endif
+
+    {{-- Import Result Modal --}}
+    @if (session('unmatched_employees') || session('applied_employees'))
+        @php
+            $unmatchedList = session('unmatched_employees', []);
+            $appliedList = session('applied_employees', []);
+            $importStats = session('import_stats', []);
+        @endphp
+        <div id="leave-import-result-modal" class="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/45 p-4 py-6 sm:items-center">
+            <div class="w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded-2xl bg-white shadow-2xl">
+                <div class="flex items-start justify-between border-b border-slate-300 px-6 py-4">
+                    <div><h3 class="text-2xl font-bold text-[#1f2b5d]">Leave Import Results</h3><p class="text-sm text-slate-500">Summary of leave file processing</p></div>
+                    <button type="button" data-close-leave-result class="text-4xl leading-none text-slate-500 hover:text-slate-700">&times;</button>
+                </div>
+                <div class="px-6 py-5">
+                    <div class="grid grid-cols-3 gap-3 mb-5">
+                        <div class="rounded-lg bg-emerald-50 border border-emerald-200 p-3 text-center"><p class="text-3xl font-extrabold text-emerald-700">{{ $importStats['imported'] ?? 0 }}</p><p class="text-xs font-semibold text-emerald-700">Imported</p></div>
+                        <div class="rounded-lg bg-amber-50 border border-amber-200 p-3 text-center"><p class="text-3xl font-extrabold text-amber-700">{{ $importStats['skipped'] ?? 0 }}</p><p class="text-xs font-semibold text-amber-700">Skipped</p></div>
+                        <div class="rounded-lg bg-blue-50 border border-blue-200 p-3 text-center"><p class="text-3xl font-extrabold text-blue-700">{{ $importStats['total_records'] ?? 0 }}</p><p class="text-xs font-semibold text-blue-700">Total Rows</p></div>
+                    </div>
+                    @if (count($unmatchedList) > 0)
+                        <div class="mb-4">
+                            <h4 class="text-sm font-bold text-red-700 mb-2">Employees NOT Found in HRIS ({{ count($unmatchedList) }})</h4>
+                            <div class="max-h-48 overflow-y-auto rounded-lg border border-red-200 bg-red-50">
+                                <table class="min-w-full text-sm"><thead class="bg-red-100 text-xs uppercase text-red-800"><tr><th class="px-3 py-2 text-left">#</th><th class="px-3 py-2 text-left">Employee (ID)</th></tr></thead>
+                                <tbody class="divide-y divide-red-100">@foreach ($unmatchedList as $idx => $label)<tr><td class="px-3 py-1.5 text-red-700">{{ $idx + 1 }}</td><td class="px-3 py-1.5 text-red-800 font-medium">{{ $label }}</td></tr>@endforeach</tbody></table>
+                            </div>
+                        </div>
+                    @endif
+                    @if (count($appliedList) > 0)
+                        <div>
+                            <h4 class="text-sm font-bold text-emerald-700 mb-2">Successfully Applied ({{ count($appliedList) }})</h4>
+                            <div class="max-h-40 overflow-y-auto rounded-lg border border-emerald-200 bg-emerald-50">
+                                <table class="min-w-full text-sm"><thead class="bg-emerald-100 text-xs uppercase text-emerald-800"><tr><th class="px-3 py-2 text-left">#</th><th class="px-3 py-2 text-left">Employee (ID)</th></tr></thead>
+                                <tbody class="divide-y divide-emerald-100">@foreach ($appliedList as $idx => $label)<tr><td class="px-3 py-1.5 text-emerald-700">{{ $idx + 1 }}</td><td class="px-3 py-1.5 text-emerald-800">{{ $label }}</td></tr>@endforeach</tbody></table>
+                            </div>
+                        </div>
+                    @endif
+                </div>
+                <div class="border-t border-slate-200 px-6 py-4 flex justify-end"><button type="button" data-close-leave-result class="rounded-md bg-[#00386f] px-6 py-2 text-sm font-semibold text-white hover:bg-[#002f5d]">Close</button></div>
+            </div>
+        </div>
+    @endif
+
+    <div class="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        <article class="rounded-xl border border-slate-300 bg-white p-4 shadow-sm"><p class="text-xs font-medium text-slate-500">Total Employees</p><p class="mt-1 text-4xl font-extrabold">{{ $stats['total_employees'] }}</p></article>
+        <article class="rounded-xl border border-slate-300 bg-white p-4 shadow-sm"><p class="text-xs font-medium text-slate-500">Vacation Used</p><p class="mt-1 text-4xl font-extrabold">{{ $stats['vacation_used'] }}</p></article>
+        <article class="rounded-xl border border-slate-300 bg-white p-4 shadow-sm"><p class="text-xs font-medium text-slate-500">Sick Leave Used</p><p class="mt-1 text-4xl font-extrabold">{{ $stats['sick_used'] }}</p></article>
+        <article class="rounded-xl border border-slate-300 bg-white p-4 shadow-sm"><p class="text-xs font-medium text-slate-500">Current Year</p><p class="mt-1 text-4xl font-extrabold">{{ $stats['current_year'] }}</p></article>
+    </div>
+
+    <article class="rounded-xl border border-slate-300 bg-white p-3 shadow-sm">
+        <div class="grid grid-cols-1 gap-2 md:grid-cols-3">
+            <div class="md:col-span-2"><input type="text" placeholder="Search Employees" class="w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-blue-400 focus:outline-none"></div>
+            <div class="grid grid-cols-2 gap-2">
+                <select class="rounded-md border border-slate-300 px-2 py-2 text-sm focus:border-blue-400 focus:outline-none"><option>All Departments</option>@foreach ($departments as $department)<option>{{ $department->name }}</option>@endforeach</select>
+                <select class="rounded-md border border-slate-300 px-2 py-2 text-sm focus:border-blue-400 focus:outline-none"><option>{{ now()->format('F Y') }}</option></select>
+            </div>
+        </div>
+    </article>
+
+    <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
+        @forelse ($leaveCards as $card)
+            <article data-faculty-card data-name="{{ $card['name'] }}" data-department="{{ $card['department'] }}" data-remaining="{{ $card['remaining'] }}" data-used="{{ $card['used'] }}" class="rounded-xl border border-slate-300 bg-white p-4 shadow-sm transition hover:shadow-md">
+                <div class="mb-3 flex items-center justify-between">
+                    <div class="flex items-center gap-3 cursor-pointer" data-open-leave-detail>
+                        <span class="inline-flex h-10 w-10 items-center justify-center rounded-full bg-[#00386f] text-sm font-semibold text-white">{{ $card['initials'] }}</span>
+                        <div><p class="text-xl font-bold text-[#1f2b5d]">{{ $card['name'] }}</p><p class="text-sm text-slate-500">{{ $card['department'] }}</p></div>
+                    </div>
+                    @if ($card['has_data'])
+                        <form method="POST" action="{{ route('leaves.clear-employee', $card['id']) }}" onsubmit="return confirm('Clear all leave records for {{ $card['name'] }}?');" class="js-loading-form">
+                            @csrf
+                            <button type="submit" class="rounded-md border border-red-200 bg-white px-2 py-1 text-xs font-medium text-red-500 hover:bg-red-50 transition" title="Clear this employee's leave records">
+                                <svg class="inline w-3.5 h-3.5 mr-0.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="m14.74 9-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 0 1-2.244 2.077H8.084a2.25 2.25 0 0 1-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 0 0-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 0 1 3.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 0 0-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 0 0-7.5 0"/></svg>
+                                Clear
+                            </button>
+                        </form>
+                    @endif
+                </div>
+                @if ($card['has_data'])
+                    <div class="grid grid-cols-3 gap-2 text-center">
+                        <div class="rounded-lg bg-emerald-50 p-2">
+                            <p class="text-2xl font-extrabold text-emerald-700">{{ rtrim(rtrim(number_format($card['vacation_used'], 2), '0'), '.') }}</p>
+                            <p class="text-[10px] font-semibold text-emerald-700">Vacation Used</p>
+                        </div>
+                        <div class="rounded-lg bg-amber-50 p-2">
+                            <p class="text-2xl font-extrabold text-amber-700">{{ rtrim(rtrim(number_format($card['sick_used'], 2), '0'), '.') }}</p>
+                            <p class="text-[10px] font-semibold text-amber-700">Sick Used</p>
+                        </div>
+                        <div class="rounded-lg bg-violet-50 p-2">
+                            <p class="text-2xl font-extrabold text-violet-700">{{ rtrim(rtrim(number_format($card['emergency_used'], 2), '0'), '.') }}</p>
+                            <p class="text-[10px] font-semibold text-violet-700">Emergency Used</p>
+                        </div>
+                    </div>
+                    <div class="mt-3 flex items-center justify-between text-xs text-slate-500">
+                        <span>Total used: <span class="font-semibold text-slate-700">{{ rtrim(rtrim(number_format($card['used'], 2), '0'), '.') }}</span> day(s)</span>
+                        @if ($card['remaining'] > 0)
+                            <span>Remaining: <span class="font-semibold text-slate-700">{{ rtrim(rtrim(number_format($card['remaining'], 2), '0'), '.') }}</span></span>
+                        @endif
+                    </div>
+                @else
+                    <p class="mt-1 rounded-md border border-dashed border-slate-300 bg-slate-50 px-3 py-4 text-center text-xs text-slate-500">No leave data yet — upload a Leave Applications file to populate.</p>
+                @endif
+            </article>
+        @empty
+            <div class="col-span-full rounded-xl border border-slate-200 bg-white p-8 text-center"><p class="text-lg font-semibold text-slate-500">No employees to show</p></div>
+        @endforelse
+    </div>
+
+    {{-- Upload Modal --}}
+    <div id="upload-leaves-modal" class="fixed inset-0 z-50 hidden items-start justify-center overflow-y-auto bg-black/45 p-4 py-6 sm:items-center">
+        <div class="w-full max-w-3xl max-h-[90vh] overflow-y-auto rounded-2xl bg-white shadow-2xl">
+            <div class="flex items-start justify-between px-7 py-6">
+                <div><h3 class="text-3xl font-bold text-[#1f2b8b]">Upload Leave Applications</h3><p class="mt-1 text-sm text-slate-500">Excel export from the HR system. Max 10 MB.</p></div>
+                <button type="button" data-close-modal class="text-4xl leading-none text-slate-500 hover:text-slate-700">&times;</button>
+            </div>
+            <form id="upload-leaves-form" class="px-7 pb-7 js-loading-form" method="POST" action="{{ route('leaves.upload') }}" enctype="multipart/form-data">
+                @csrf
+                <div class="rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-800 mb-4">
+                    <p class="font-semibold">Employee ID Format Flexible</p>
+                    <p class="mt-1 text-blue-700">Accepts IDs with and without dash. Leave will only be applied to registered employees.</p>
+                </div>
+                <label class="mb-2 block text-sm font-medium text-slate-700">Leave applications file (.xlsx / .xls)</label>
+                <label for="leaves_file" id="leaves-drop-zone" class="block cursor-pointer rounded-lg border-2 border-dashed border-slate-300 p-8 text-center transition hover:border-[#00386f] hover:bg-blue-50/30">
+                    <input id="leaves_file" name="leaves_file" type="file" accept=".xlsx,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" class="sr-only" required>
+                    <div class="mx-auto inline-flex h-14 w-14 items-center justify-center text-slate-400">
+                        <svg class="h-10 w-10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 16V4" /><path d="m7 9 5-5 5 5" /><path d="M4 16v3a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-3" /></svg>
+                    </div>
+                    <p id="leaves-file-name" class="mt-3 text-lg text-slate-500">Click to upload or drag and drop</p>
+                    <p id="leaves-file-size" class="text-sm text-slate-400">.xlsx or .xls · up to 10 MB</p>
+                </label>
+                <div class="mt-6 flex flex-col gap-3 sm:flex-row sm:justify-end">
+                    <button type="button" data-close-modal class="rounded-md border border-slate-400 px-8 py-2.5 text-lg font-semibold text-slate-700 hover:bg-slate-50">Cancel</button>
+                    <button type="submit" class="inline-flex items-center justify-center gap-2 rounded-md bg-[#00386f] px-8 py-2.5 text-lg font-semibold text-white hover:bg-[#002f5d]">Import Leave File</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    {{-- Leave Details Modal --}}
+    <div id="leave-details-modal" class="fixed inset-0 z-50 hidden items-start justify-center overflow-y-auto bg-black/45 p-4 py-6 sm:items-center">
+        <div class="w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded-2xl bg-white shadow-2xl">
+            <div class="flex items-start justify-between px-7 py-6">
+                <h3 class="text-3xl font-bold text-[#1f2b8b]">Leave Summary - <span id="leave-details-name">Employee</span></h3>
+                <button type="button" data-close-modal class="text-4xl leading-none text-slate-500 hover:text-slate-700">&times;</button>
+            </div>
+            <div class="px-7 pb-7">
+                <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                    <article class="rounded-xl border border-slate-300 bg-white p-6 text-center shadow-sm">
+                        <p id="leave-remaining-days" class="text-5xl font-extrabold text-emerald-700">0</p>
+                        <p class="text-xl text-slate-700">Remaining Days</p>
+                    </article>
+                    <article class="rounded-xl border border-slate-300 bg-white p-6 text-center shadow-sm">
+                        <p id="leave-used-days" class="text-5xl font-extrabold text-amber-600">0</p>
+                        <p class="text-xl text-slate-700">Days Used</p>
+                    </article>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    {{-- Global Loading Overlay --}}
+    <div id="loading-overlay" class="fixed inset-0 z-[100] hidden items-center justify-center bg-black/50">
+        <div class="rounded-2xl bg-white px-8 py-6 shadow-2xl text-center">
+            <svg class="mx-auto h-10 w-10 animate-spin text-[#00386f]" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+            </svg>
+            <p class="mt-3 text-lg font-semibold text-[#1f2b5d]">Processing...</p>
+            <p class="text-sm text-slate-500">Please wait, this may take a moment.</p>
+        </div>
+    </div>
+@endsection
+
+@push('scripts')
+    <script>
+        const allModals = document.querySelectorAll('#upload-leaves-modal, #leave-details-modal');
+        document.querySelectorAll('[data-open-modal]').forEach(btn => { btn.addEventListener('click', () => { const m = document.getElementById(btn.dataset.openModal); if(m){m.classList.remove('hidden');m.classList.add('flex');document.body.classList.add('overflow-hidden');} }); });
+        document.querySelectorAll('[data-close-modal]').forEach(btn => { btn.addEventListener('click', () => { const m = btn.closest('.fixed.inset-0'); if(m){m.classList.add('hidden');m.classList.remove('flex');document.body.classList.remove('overflow-hidden');} }); });
+        document.querySelectorAll('[data-close-leave-result]').forEach(btn => { btn.addEventListener('click', () => { const m = document.getElementById('leave-import-result-modal'); if(m){m.classList.add('hidden');m.classList.remove('flex');document.body.classList.remove('overflow-hidden');} }); });
+        const leaveResultModal = document.getElementById('leave-import-result-modal');
+        if (leaveResultModal) { document.body.classList.add('overflow-hidden'); leaveResultModal.addEventListener('click', e => { if(e.target===leaveResultModal){leaveResultModal.classList.add('hidden');leaveResultModal.classList.remove('flex');document.body.classList.remove('overflow-hidden');} }); }
+        allModals.forEach(m => { m.addEventListener('click', e => { if(e.target===m){m.classList.add('hidden');m.classList.remove('flex');document.body.classList.remove('overflow-hidden');} }); });
+        document.addEventListener('keydown', e => { if(e.key==='Escape'){[...allModals, leaveResultModal].filter(Boolean).forEach(m => { if(!m.classList.contains('hidden')){m.classList.add('hidden');m.classList.remove('flex');document.body.classList.remove('overflow-hidden');} });} });
+
+        // File input with exact size
+        const leavesInput = document.getElementById('leaves_file');
+        const leavesFileName = document.getElementById('leaves-file-name');
+        const leavesFileSize = document.getElementById('leaves-file-size');
+        const leavesDropZone = document.getElementById('leaves-drop-zone');
+        if (leavesInput) {
+            leavesInput.addEventListener('change', function () {
+                if (!this.files.length) { leavesFileName.textContent = 'Click to upload or drag and drop'; leavesFileSize.textContent = '.xlsx or .xls · up to 10 MB'; return; }
+                const file = this.files[0];
+                const sizeKB = (file.size / 1024).toFixed(1);
+                const sizeMB = (file.size / 1024 / 1024).toFixed(2);
+                const sizeText = file.size > 1048576 ? sizeMB + ' MB' : sizeKB + ' KB';
+                leavesFileName.textContent = file.name;
+                leavesFileName.classList.add('font-semibold');
+                if (file.size > 10485760) { leavesFileSize.textContent = sizeText + ' — TOO LARGE'; leavesFileName.classList.add('text-red-600'); leavesDropZone.classList.add('border-red-400','bg-red-50/30'); }
+                else { leavesFileSize.textContent = sizeText; leavesFileName.classList.add('text-emerald-700'); leavesDropZone.classList.add('border-emerald-400','bg-emerald-50/30'); leavesDropZone.classList.remove('border-slate-300'); }
+            });
+        }
+
+        // Leave detail cards
+        document.querySelectorAll('[data-open-leave-detail]').forEach(trigger => {
+            trigger.addEventListener('click', () => {
+                const card = trigger.closest('[data-faculty-card]');
+                document.getElementById('leave-details-name').textContent = card.dataset.name || 'Employee';
+                document.getElementById('leave-remaining-days').textContent = card.dataset.remaining || '0';
+                document.getElementById('leave-used-days').textContent = card.dataset.used || '0';
+                const m = document.getElementById('leave-details-modal'); m.classList.remove('hidden'); m.classList.add('flex'); document.body.classList.add('overflow-hidden');
+            });
+        });
+
+        // Loading overlay
+        const loadingOverlay = document.getElementById('loading-overlay');
+        document.querySelectorAll('.js-loading-form').forEach(form => { form.addEventListener('submit', () => { if(loadingOverlay){loadingOverlay.classList.remove('hidden');loadingOverlay.classList.add('flex');} }); });
+    </script>
+@endpush
