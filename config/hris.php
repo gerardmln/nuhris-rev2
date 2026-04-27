@@ -40,7 +40,6 @@ return [
         'Marketing Office',
         'Alumni Affairs Office (AAO)',
         'Academe-Industry Linkages and Placement Office (AILPO)',
-        'Security Office',
         'Community Extension Office (ComEx)',
         'Discipline Office (DO)',
         'Student Development and Activities Office (SDAO)',
@@ -55,7 +54,6 @@ return [
         "Academic Director's Office",
         'Health Services Office (HSO)',
         'Information Technology Systems Office / Information Technology Services Office',
-        'janitor',
     ],
 
     'department_schools' => [

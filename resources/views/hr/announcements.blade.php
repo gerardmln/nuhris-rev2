@@ -156,25 +156,52 @@
                                 <option value="high">High</option>
                             </select>
                         </div>
+                    </div>
+
+                    <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
                         <div>
-                            <label class="mb-1 block text-lg font-semibold text-[#1f2b8b]">Target Role</label>
-                            <select name="target_user_type" class="w-full rounded-md border border-slate-300 px-3 py-2.5 text-lg focus:border-blue-400 focus:outline-none">
-                                <option value="">Everyone</option>
-                                <option value="1">Admin</option>
-                                <option value="2">HR</option>
-                                <option value="3">Employee</option>
+                            <label class="mb-1 block text-lg font-semibold text-[#1f2b8b]">Target Employee</label>
+                            <select name="target_employee_type" data-target-control="employee_type" class="w-full rounded-md border border-slate-300 px-3 py-2.5 text-lg focus:border-blue-400 focus:outline-none">
+                                <option value="">All Employees</option>
+                                <option value="faculty">Faculty</option>
+                                <option value="admin_support">Admin Support Personnel</option>
+                            </select>
+                            <p class="mt-1 text-xs text-slate-500">Used to show the correct position, department, and ranking filters.</p>
+                        </div>
+                        <div data-target-field="department" class="hidden">
+                            <label class="mb-1 block text-lg font-semibold text-[#1f2b8b]">Target Department</label>
+                            <select name="target_department_id" data-target-control="department" class="w-full rounded-md border border-slate-300 px-3 py-2.5 text-lg focus:border-blue-400 focus:outline-none">
+                                <option value="">All Departments</option>
+                                @foreach ($facultyDepartments as $department)
+                                    <option value="{{ $department->id }}">{{ $department->name }}</option>
+                                @endforeach
                             </select>
                         </div>
                     </div>
 
-                    <div>
-                        <label class="mb-1 block text-lg font-semibold text-[#1f2b8b]">Target Office (Admin Support Personnel)</label>
-                        <select name="target_office" class="w-full rounded-md border border-slate-300 px-3 py-2.5 text-lg focus:border-blue-400 focus:outline-none">
-                            <option value="">All Offices</option>
-                            @foreach ($officeAudiences as $office)
-                                <option value="{{ $office }}">{{ $office }}</option>
-                            @endforeach
-                        </select>
+                    <div data-target-field="filters" class="hidden space-y-3 rounded-xl border border-slate-200 bg-slate-50 p-4">
+                        <div>
+                            <label class="mb-1 block text-lg font-semibold text-[#1f2b8b]">Target Position / Office</label>
+                            <select name="target_office" data-target-control="position" class="w-full rounded-md border border-slate-300 px-3 py-2.5 text-lg focus:border-blue-400 focus:outline-none">
+                                <option value="">All Positions / Offices</option>
+                                @foreach ($facultyPositions as $position)
+                                    <option value="{{ $position }}" data-target-employee-type="faculty">{{ $position }}</option>
+                                @endforeach
+                                @foreach ($adminSupportOffices as $office)
+                                    <option value="{{ $office }}" data-target-employee-type="admin_support">{{ $office }}</option>
+                                @endforeach
+                            </select>
+                        </div>
+
+                        <div data-target-field="ranking" class="hidden">
+                            <label class="mb-1 block text-lg font-semibold text-[#1f2b8b]">Target Faculty Ranking</label>
+                            <select name="target_ranking" data-target-control="ranking" class="w-full rounded-md border border-slate-300 px-3 py-2.5 text-lg focus:border-blue-400 focus:outline-none">
+                                <option value="">All Rankings</option>
+                                @foreach ($facultyRankings as $ranking)
+                                    <option value="{{ $ranking }}">{{ $ranking }}</option>
+                                @endforeach
+                            </select>
+                        </div>
                     </div>
 
                     <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
@@ -289,6 +316,130 @@
         const modalOpeners = document.querySelectorAll('[data-open-modal]');
         const modalClosers = document.querySelectorAll('[data-close-modal]');
         const modalElements = document.querySelectorAll('#new-announcement-modal, #edit-announcement-modal');
+
+        const targetEmployeeTypeControl = document.querySelector('[name="target_employee_type"]');
+        const targetPositionControl = document.querySelector('[name="target_office"]');
+        const targetRankingControl = document.querySelector('[name="target_ranking"]');
+        const targetDepartmentField = document.querySelector('[data-target-field="department"]');
+        const targetFiltersField = document.querySelector('[data-target-field="filters"]');
+        const targetRankingField = document.querySelector('[data-target-field="ranking"]');
+
+        function normalizeTargetValue(value) {
+            return String(value ?? '').trim().toLowerCase();
+        }
+
+        function rankingPrefixForPosition(position) {
+            const normalized = normalizeTargetValue(position);
+
+            if (normalized.includes('assistant professor')) return 'assistant professor';
+            if (normalized.includes('associate professor')) return 'associate professor';
+            if (normalized.includes('full professor')) return 'full professor';
+            if (normalized.includes('instructor')) return 'instructor';
+
+            return '';
+        }
+
+        function filterAnnouncementPositionOptions(employeeType) {
+            if (!targetPositionControl) return;
+
+            const normalizedType = normalizeTargetValue(employeeType);
+            const options = Array.from(targetPositionControl.options);
+            let selectedStillVisible = false;
+
+            options.forEach((option) => {
+                if (option.value === '') {
+                    option.hidden = false;
+                    option.disabled = false;
+                    return;
+                }
+
+                const optionType = normalizeTargetValue(option.dataset.targetEmployeeType);
+                const matches = !normalizedType || optionType === normalizedType;
+
+                option.hidden = !matches;
+                option.disabled = !matches;
+
+                if (matches && option.value === targetPositionControl.value) {
+                    selectedStillVisible = true;
+                }
+            });
+
+            if (!selectedStillVisible && normalizedType) {
+                targetPositionControl.value = '';
+            }
+        }
+
+        function filterAnnouncementRankingOptions(position) {
+            if (!targetRankingControl) return;
+
+            const prefix = rankingPrefixForPosition(position);
+            const options = Array.from(targetRankingControl.options);
+            let selectedStillVisible = false;
+
+            options.forEach((option) => {
+                if (option.value === '') {
+                    option.hidden = false;
+                    option.disabled = false;
+                    return;
+                }
+
+                const matches = !prefix || normalizeTargetValue(option.value).startsWith(prefix);
+
+                option.hidden = !matches;
+                option.disabled = !matches;
+
+                if (matches && option.value === targetRankingControl.value) {
+                    selectedStillVisible = true;
+                }
+            });
+
+            if (!selectedStillVisible && prefix) {
+                targetRankingControl.value = '';
+            }
+        }
+
+        function updateAnnouncementTargetFields() {
+            const employeeType = targetEmployeeTypeControl?.value ?? '';
+            const isFaculty = employeeType === 'faculty';
+            const isAdminSupport = employeeType === 'admin_support';
+
+            if (targetFiltersField) {
+                targetFiltersField.classList.toggle('hidden', !employeeType);
+            }
+
+            if (targetDepartmentField) {
+                targetDepartmentField.classList.toggle('hidden', !isFaculty);
+                if (!isFaculty) {
+                    const departmentSelect = targetDepartmentField.querySelector('[name="target_department_id"]');
+                    if (departmentSelect) departmentSelect.value = '';
+                }
+            }
+
+            if (targetRankingField) {
+                const shouldShowRanking = isFaculty && rankingPrefixForPosition(targetPositionControl?.value ?? '') !== '';
+                targetRankingField.classList.toggle('hidden', !shouldShowRanking);
+                if (!shouldShowRanking && targetRankingControl) {
+                    targetRankingControl.value = '';
+                }
+            }
+
+            filterAnnouncementPositionOptions(employeeType);
+            filterAnnouncementRankingOptions(targetPositionControl?.value ?? '');
+
+            if (isAdminSupport && targetRankingControl) {
+                targetRankingControl.value = '';
+            }
+        }
+
+        if (targetEmployeeTypeControl) {
+            targetEmployeeTypeControl.addEventListener('change', updateAnnouncementTargetFields);
+        }
+
+        if (targetPositionControl) {
+            targetPositionControl.addEventListener('change', updateAnnouncementTargetFields);
+        }
+
+        updateAnnouncementTargetFields();
 
         function showModal(modalId) {
             const modal = document.getElementById(modalId);

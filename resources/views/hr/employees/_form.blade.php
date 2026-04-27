@@ -2,6 +2,14 @@
     $isEdit = isset($employee);
     $facultyPositions = $facultyPositions ?? [];
     $aspPositions = $aspPositions ?? [];
+    $rawPhone = (string) old('phone', $employee->phone ?? '');
+    $phoneDigits = preg_replace('/\D+/', '', $rawPhone) ?? '';
+
+    if (str_starts_with($phoneDigits, '63') && strlen($phoneDigits) === 12) {
+        $phoneDigits = substr($phoneDigits, 2);
+    } elseif (str_starts_with($phoneDigits, '0') && strlen($phoneDigits) === 11) {
+        $phoneDigits = substr($phoneDigits, 1);
+    }
 @endphp
 
 <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
@@ -37,8 +45,24 @@
     </div>
 
     <div>
-        <label for="phone" class="mb-1 block text-sm font-semibold text-slate-700">Phone</label>
-        <input id="phone" name="phone" type="text" value="{{ old('phone', $employee->phone ?? '') }}" class="w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-blue-400 focus:outline-none">
+        <label for="phone" class="mb-1 block text-sm font-semibold text-slate-700">Mobile Number</label>
+        <div class="flex w-full overflow-hidden rounded-md border border-slate-300 focus-within:border-blue-400">
+            <span class="inline-flex items-center border-r border-slate-300 bg-slate-50 px-3 text-sm font-semibold text-slate-600">+63</span>
+            <input
+                id="phone"
+                name="phone"
+                type="tel"
+                value="{{ $phoneDigits }}"
+                inputmode="numeric"
+                pattern="\d{10}"
+                maxlength="10"
+                autocomplete="tel-national"
+                placeholder="9987654321"
+                oninput="this.value = this.value.replace(/\D/g, '').slice(0, 10);"
+                class="w-full border-0 px-3 py-2 text-sm focus:outline-none"
+            >
+        </div>
+        <p class="mt-1 text-xs text-slate-500">Enter 10 digits only. Example: +63 998 765 4321</p>
         @error('phone')<p class="mt-1 text-xs text-red-600">{{ $message }}</p>@enderror
     </div>
 
@@ -98,24 +122,6 @@
             @endforeach
         </select>
         @error('ranking')<p class="mt-1 text-xs text-red-600">{{ $message }}</p>@enderror
-    </div>
-
-    <div>
-        <label for="status" class="mb-1 block text-sm font-semibold text-slate-700">Status *</label>
-        @if ($isEdit)
-            <select id="status" name="status" class="w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-blue-400 focus:outline-none" required>
-                <option value="active" @selected(old('status', $employee->status ?? 'active') === 'active')>Active</option>
-                <option value="on_leave" @selected(old('status', $employee->status ?? '') === 'on_leave')>On Leave</option>
-                <option value="resigned" @selected(old('status', $employee->status ?? '') === 'resigned')>Resigned</option>
-                <option value="terminated" @selected(old('status', $employee->status ?? '') === 'terminated')>Terminated</option>
-            </select>
-        @else
-            <select id="status" name="status" class="w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-blue-400 focus:outline-none" required>
-                <option value="active" selected>Active</option>
-            </select>
-            <p class="mt-1 text-xs text-slate-500">New employees are created as Active. Update the status from the Edit screen if needed.</p>
-        @endif
-        @error('status')<p class="mt-1 text-xs text-red-600">{{ $message }}</p>@enderror
     </div>
 
     <div>

@@ -5,13 +5,16 @@ namespace App\Http\Controllers\Employee;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\StoreEmployeeCredentialRequest;
 use App\Http\Requests\UpdateEmployeeAccountRequest;
+use App\Models\Announcement;
 use App\Models\AnnouncementNotification;
 use App\Models\Department;
 use App\Models\Employee;
 use App\Models\EmployeeCredential;
+use App\Models\User;
 use App\Services\SupabaseStorageService;
 use Illuminate\Http\Request;
 use Illuminate\Http\RedirectResponse;
+use Illuminate\Support\Facades\DB;
 use Illuminate\View\View;
 
 class PortalController extends Controller
@@ -23,6 +26,7 @@ class PortalController extends Controller
 
         $notificationsCount = AnnouncementNotification::query()
             ->where('user_id', $user->id)
+            ->where('is_read', false)
             ->count();
 
         $recentAlerts = AnnouncementNotification::query()
@@ -155,17 +159,51 @@ class PortalController extends Controller
             }
         }
 
-        EmployeeCredential::create([
-            'employee_id' => $employee->id,
-            'credential_type' => $request->string('credential_type')->toString(),
-            'title' => $request->string('title')->toString(),
-            'department_id' => $request->input('department_id'),
-            'expires_at' => $request->input('expires_at'),
-            'description' => $request->input('description'),
-            'file_path' => $filePath,
-            'original_filename' => $originalFilename,
-            'status' => 'pending',
-        ]);
+        DB::transaction(function () use ($request, $employee, $filePath, $originalFilename): void {
+            EmployeeCredential::create([
+                'employee_id' => $employee->id,
+                'credential_type' => $request->string('credential_type')->toString(),
+                'title' => $request->string('title')->toString(),
+                'department_id' => $request->input('department_id'),
+                'expires_at' => $request->input('expires_at'),
+                'description' => $request->input('description'),
+                'file_path' => $filePath,
+                'original_filename' => $originalFilename,
+                'status' => 'pending',
+            ]);
+
+            $hrAnnouncement = Announcement::forceCreate([
+                'title' => 'New credential uploaded',
+                'content' => sprintf(
+                    '%s uploaded a %s credential titled "%s" and it is awaiting HR review.',
+                    $employee->full_name,
+                    $request->string('credential_type')->toString(),
+                    $request->string('title')->toString()
+                ),
+                'priority' => 'medium',
+                'target_user_type' => User::TYPE_HR,
+                'published_at' => now(),
+                'is_published' => true,
+                'created_by' => $request->user()->id,
+            ]);
+
+            $hrUserIds = User::query()
+                ->where('user_type', User::TYPE_HR)
+                ->pluck('id');
+
+            $rows = $hrUserIds->map(fn ($userId) => [
+                'announcement_id' => $hrAnnouncement->id,
+                'user_id' => $userId,
+                'is_read' => false,
+                'read_at' => null,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ])->all();
+
+            if (! empty($rows)) {
+                AnnouncementNotification::insert($rows);
+            }
+        });
 
         return redirect()->route('employee.credentials')->with('success', 'Credential uploaded successfully. It is now pending HR review.');
     }

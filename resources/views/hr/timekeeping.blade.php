@@ -99,27 +99,21 @@
     @endif
 
     <article class="rounded-xl border border-slate-300 bg-white p-3 shadow-sm">
-        <form method="GET" action="{{ route('timekeeping.index') }}" class="grid grid-cols-1 gap-2 md:grid-cols-4">
-            <div class="md:col-span-2">
-                <input type="text" name="search" value="{{ $search ?? '' }}" placeholder="Search by name, ID, or department..."
+        <div class="grid grid-cols-1 gap-2 md:grid-cols-4">
+            <form method="GET" action="{{ route('timekeeping.index') }}" class="md:col-span-2">
+                <input type="text" name="search" value="{{ $search ?? '' }}" placeholder="Search by name, email, ID, or department..."
                        class="w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-blue-400 focus:outline-none">
+            </form>
+            <div class="md:col-span-2">
+                <form method="POST" action="{{ route('biometrics.clear') }}" class="js-loading-form"
+                      onsubmit="return confirm('Clear ALL uploaded biometric attendance records in the system? This cannot be undone.');">
+                    @csrf
+                    <button type="submit" class="w-full rounded-md border border-red-300 bg-red-50 px-3 py-2 text-sm font-semibold text-red-700 hover:bg-red-100 transition">
+                        Clear All Biometric Data
+                    </button>
+                </form>
             </div>
-            <div>
-                <select name="period" onchange="updatePeriodFields(this)"
-                        class="w-full rounded-md border border-slate-300 px-2 py-2 text-sm focus:border-blue-400 focus:outline-none">
-                    @foreach ($periods as $period)
-                        <option value="{{ $period['month'] }}-{{ $period['year'] }}" {{ $period['selected'] ? 'selected' : '' }}>
-                            {{ $period['label'] }}
-                        </option>
-                    @endforeach
-                </select>
-                <input type="hidden" name="month" id="filter-month" value="{{ $selectedMonth }}">
-                <input type="hidden" name="year" id="filter-year" value="{{ $selectedYear }}">
-            </div>
-            <div>
-                <button type="submit" class="w-full rounded-md bg-[#00386f] px-3 py-2 text-sm font-semibold text-white hover:bg-[#002f5d] transition">Apply Filter</button>
-            </div>
-        </form>
+        </div>
     </article>
 
     <div class="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
@@ -216,12 +210,6 @@
 
 @push('scripts')
     <script>
-        function updatePeriodFields(select) {
-            const [month, year] = select.value.split('-');
-            document.getElementById('filter-month').value = month;
-            document.getElementById('filter-year').value = year;
-        }
-
         // Modal logic
         document.querySelectorAll('[data-open-modal]').forEach(btn => {
             btn.addEventListener('click', () => {

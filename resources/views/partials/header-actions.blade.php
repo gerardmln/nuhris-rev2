@@ -1,9 +1,21 @@
+@php
+    $unreadNotificationCount = auth()->check()
+        ? auth()->user()->unreadAnnouncementNotifications()->count()
+        : 0;
+@endphp
+
 <div class="flex items-center gap-3">
-    <a href="{{ route('notifications.index') }}" class="rounded-full border border-slate-300 p-2 text-slate-500 hover:bg-slate-100" aria-label="Notifications" data-testid="header-notifications">
+    <a href="{{ route('notifications.index') }}" class="relative rounded-full border border-slate-300 p-2 text-slate-500 hover:bg-slate-100" aria-label="Notifications {{ $unreadNotificationCount > 0 ? '('.$unreadNotificationCount.' unread)' : '' }}" data-testid="header-notifications">
         <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
             <path d="M15 17h5l-1.4-1.4A2 2 0 0 1 18 14.2V11a6 6 0 1 0-12 0v3.2a2 2 0 0 1-.6 1.4L4 17h5"></path>
             <path d="M10 20a2 2 0 0 0 4 0"></path>
         </svg>
+        @if ($unreadNotificationCount > 0)
+            <span
+                class="absolute right-0 top-0 block h-2.5 w-2.5 -translate-y-1/4 translate-x-1/4 rounded-full"
+                style="background-color: #2563eb;"
+            ></span>
+        @endif
     </a>
 
     <details class="group relative">

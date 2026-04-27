@@ -2,6 +2,7 @@
 
 namespace App\Http\Requests;
 
+use App\Models\Department;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 
@@ -22,18 +23,50 @@ class StoreAnnouncementRequest extends FormRequest
      */
     public function rules(): array
     {
-        $roles = ['1', '2', '3'];
-        $offices = config('hris.admin_support_offices', []);
+        $employeeTypes = ['faculty', 'admin_support'];
+        $facultyPositions = array_values(config('hris.faculty_positions', []));
+        $adminSupportOffices = array_values(config('hris.admin_support_offices', []));
+        $facultyRankings = array_values(config('hris.faculty_rankings', []));
+        $facultyDepartmentIds = Department::query()->facultySchools()->pluck('id')->all();
+
+        $selectedEmployeeType = (string) $this->input('target_employee_type', '');
+        $selectedPosition = (string) $this->input('target_office', '');
+
+        $allowedPositions = match ($selectedEmployeeType) {
+            'faculty' => $facultyPositions,
+            'admin_support' => $adminSupportOffices,
+            default => array_values(array_unique(array_merge($facultyPositions, $adminSupportOffices))),
+        };
+
+        $rankPrefix = $this->rankingPrefixForPosition($selectedPosition);
+        $allowedRankings = $rankPrefix === ''
+            ? $facultyRankings
+            : array_values(array_filter($facultyRankings, fn ($ranking) => str_starts_with(mb_strtolower((string) $ranking), $rankPrefix)));
 
         return [
             'title' => ['required', 'string', 'max:255'],
             'content' => ['required', 'string'],
             'priority' => ['required', 'in:low,medium,high'],
-            'target_user_type' => ['nullable', Rule::in($roles)],
-            'target_office' => ['nullable', Rule::in($offices)],
+            'target_employee_type' => ['nullable', Rule::in($employeeTypes)],
+            'target_office' => ['nullable', Rule::in($allowedPositions)],
+            'target_department_id' => ['nullable', Rule::in($facultyDepartmentIds)],
+            'target_ranking' => ['nullable', Rule::in($allowedRankings)],
             'published_at' => ['nullable', 'date'],
             'expires_at' => ['nullable', 'date', 'after_or_equal:published_at'],
             'is_published' => ['nullable', 'boolean'],
         ];
+    }
+
+    private function rankingPrefixForPosition(string $position): string
+    {
+        $normalized = mb_strtolower(trim($position));
+
+        return match (true) {
+            str_contains($normalized, 'assistant professor') => 'assistant professor',
+            str_contains($normalized, 'associate professor') => 'associate professor',
+            str_contains($normalized, 'full professor') => 'full professor',
+            str_contains($normalized, 'instructor') => 'instructor',
+            default => '',
+        };
     }
 }

@@ -33,7 +33,8 @@ class UpdateEmployeeRequest extends FormRequest
         $employmentType = Str::lower((string) $this->input('employment_type'));
         $selectedPosition = Str::lower((string) $this->input('position'));
         $requiresDepartment = Str::contains($selectedPosition, ['professor', 'dean', 'program chair']);
-        $requiresRanking = Str::contains($selectedPosition, 'professor');
+        $allowedRankings = $this->allowedRankingsForPosition($selectedPosition, $rankings);
+        $requiresRanking = ! empty($allowedRankings);
 
         $allowedPositions = match (true) {
             str_contains($employmentType, 'faculty') => $facultyPositions,
@@ -46,7 +47,7 @@ class UpdateEmployeeRequest extends FormRequest
             'first_name' => ['required', 'string', 'max:255'],
             'last_name' => ['required', 'string', 'max:255'],
             'email' => ['required', 'email', 'max:255', Rule::unique('employees', 'email')->ignore($employeeId)],
-            'phone' => ['nullable', 'string', 'max:50'],
+            'phone' => ['nullable', 'digits:10'],
             'address' => ['nullable', 'string', 'max:255'],
             'department_id' => [Rule::requiredIf($requiresDepartment), 'nullable', 'exists:departments,id'],
             'position' => ['required', Rule::in($allowedPositions)],
@@ -54,9 +55,9 @@ class UpdateEmployeeRequest extends FormRequest
             'ranking' => [
                 Rule::requiredIf($requiresRanking),
                 'nullable',
-                Rule::in($rankings),
+                Rule::in($requiresRanking ? $allowedRankings : $rankings),
             ],
-            'status' => ['required', 'in:active,on_leave,resigned,terminated'],
+            'status' => ['sometimes', 'in:active,on_leave,resigned,terminated'],
             'hire_date' => ['nullable', 'date'],
             'official_time_in' => ['nullable', 'date_format:H:i'],
             'official_time_out' => ['nullable', 'date_format:H:i'],
@@ -68,6 +69,29 @@ class UpdateEmployeeRequest extends FormRequest
     {
         return [
             'position.in' => 'The selected position does not belong to the chosen Employee Type.',
+            'ranking.in' => 'The selected Faculty Ranking does not match the selected Position.',
+            'phone.digits' => 'Mobile Number must contain exactly 10 digits after +63 (e.g., 9949960496).',
         ];
+    }
+
+    /**
+     * @param  array<int, string>  $rankings
+     * @return array<int, string>
+     */
+    private function allowedRankingsForPosition(string $selectedPosition, array $rankings): array
+    {
+        $prefix = match (true) {
+            str_contains($selectedPosition, 'assistant professor') => 'assistant professor',
+            str_contains($selectedPosition, 'associate professor') => 'associate professor',
+            str_contains($selectedPosition, 'full professor') => 'full professor',
+            str_contains($selectedPosition, 'instructor') => 'instructor',
+            default => '',
+        };
+
+        if ($prefix === '') {
+            return [];
+        }
+
+        return array_values(array_filter($rankings, fn ($ranking) => str_starts_with(Str::lower((string) $ranking), $prefix)));
     }
 }

@@ -25,6 +25,9 @@
     @php
         $name = auth()->user()->name ?? 'Martinez, Ian Isaac';
         $email = auth()->user()->email ?? 'martinezian@gmail.com';
+        $unreadNotificationCount = auth()->check()
+            ? auth()->user()->unreadAnnouncementNotifications()->count()
+            : 0;
         $navItems = [
             ['label' => 'Dashboard', 'route' => 'employee.dashboard', 'match' => 'employee.dashboard', 'icon' => 'M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6'],
             ['label' => 'Credentials', 'route' => 'employee.credentials', 'match' => 'employee.credentials*', 'icon' => 'M9 12l2 2 4-4M7.835 4.697a3.42 3.42 0 001.946-.806 3.42 3.42 0 014.438 0 3.42 3.42 0 001.946.806 3.42 3.42 0 013.138 3.138 3.42 3.42 0 00.806 1.946 3.42 3.42 0 010 4.438 3.42 3.42 0 00-.806 1.946 3.42 3.42 0 01-3.138 3.138 3.42 3.42 0 00-1.946.806 3.42 3.42 0 01-4.438 0 3.42 3.42 0 00-1.946-.806 3.42 3.42 0 01-3.138-3.138 3.42 3.42 0 00-.806-1.946 3.42 3.42 0 010-4.438 3.42 3.42 0 00.806-1.946 3.42 3.42 0 013.138-3.138z'],
@@ -85,11 +88,17 @@
                     </div>
 
                     <div class="flex items-center gap-3">
-                        <a href="{{ route('employee.notifications') }}" class="rounded-full border border-slate-300 p-2 text-slate-500 hover:bg-slate-100" aria-label="Notifications">
+                        <a href="{{ route('employee.notifications') }}" class="relative rounded-full border border-slate-300 p-2 text-slate-500 hover:bg-slate-100" aria-label="Notifications {{ $unreadNotificationCount > 0 ? '('.$unreadNotificationCount.' unread)' : '' }}">
                             <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
                                 <path d="M15 17h5l-1.4-1.4A2 2 0 0 1 18 14.2V11a6 6 0 1 0-12 0v3.2a2 2 0 0 1-.6 1.4L4 17h5"></path>
                                 <path d="M10 20a2 2 0 0 0 4 0"></path>
                             </svg>
+                            @if ($unreadNotificationCount > 0)
+                                <span
+                                    class="absolute right-0 top-0 block h-2.5 w-2.5 -translate-y-1/4 translate-x-1/4 rounded-full"
+                                    style="background-color: #2563eb;"
+                                ></span>
+                            @endif
                         </a>
 
                         <details class="group relative">

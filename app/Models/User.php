@@ -62,6 +62,11 @@ class User extends Authenticatable
         return $this->hasMany(AnnouncementNotification::class);
     }
 
+    public function unreadAnnouncementNotifications(): HasMany
+    {
+        return $this->announcementNotifications()->where('is_read', false);
+    }
+
     public function employeeProfile(): HasOne
     {
         return $this->hasOne(Employee::class, 'email', 'email');

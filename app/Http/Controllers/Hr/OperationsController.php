@@ -3,17 +3,21 @@
 namespace App\Http\Controllers\Hr;
 
 use App\Http\Controllers\Controller;
+use App\Models\Announcement;
+use App\Models\AnnouncementNotification;
 use App\Models\AttendanceRecord;
 use App\Models\Department;
 use App\Models\Employee;
 use App\Models\EmployeeCredential;
 use App\Models\LeaveRequest;
+use App\Models\User;
 use App\Services\SupabaseStorageService;
 use Carbon\Carbon;
 use Carbon\CarbonPeriod;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\DB;
 use Illuminate\View\View;
 use PhpOffice\PhpSpreadsheet\IOFactory as SpreadsheetIOFactory;
 use Smalot\PdfParser\Parser as PdfParser;
@@ -117,12 +121,21 @@ class OperationsController extends Controller
             'review_notes' => ['nullable', 'string', 'max:1000'],
         ]);
 
-        $credential->update([
-            'status' => 'verified',
-            'reviewed_by' => $request->user()?->id,
-            'reviewed_at' => now(),
-            'review_notes' => $validated['review_notes'] ?? null,
-        ]);
+        DB::transaction(function () use ($request, $credential, $validated): void {
+            $credential->update([
+                'status' => 'verified',
+                'reviewed_by' => $request->user()?->id,
+                'reviewed_at' => now(),
+                'review_notes' => $validated['review_notes'] ?? null,
+            ]);
+
+            $this->broadcastCredentialDecisionNotification(
+                $credential,
+                'approved',
+                $request->user(),
+                $validated['review_notes'] ?? null
+            );
+        });
 
         return back()->with('success', 'Credential approved successfully.');
     }
@@ -135,14 +148,69 @@ class OperationsController extends Controller
             'review_notes.required' => 'Please provide a reason when rejecting a credential so the employee knows what to fix.',
         ]);
 
-        $credential->update([
-            'status' => 'rejected',
-            'reviewed_by' => $request->user()?->id,
-            'reviewed_at' => now(),
-            'review_notes' => $validated['review_notes'],
-        ]);
+        DB::transaction(function () use ($request, $credential, $validated): void {
+            $credential->update([
+                'status' => 'rejected',
+                'reviewed_by' => $request->user()?->id,
+                'reviewed_at' => now(),
+                'review_notes' => $validated['review_notes'],
+            ]);
+
+            $this->broadcastCredentialDecisionNotification(
+                $credential,
+                'rejected',
+                $request->user(),
+                $validated['review_notes']
+            );
+        });
 
         return back()->with('success', 'Credential rejected. The employee will see your notes.');
+    }
+
+    private function broadcastCredentialDecisionNotification(EmployeeCredential $credential, string $decision, ?User $reviewer, ?string $notes = null): void
+    {
+        $credential->loadMissing('employee');
+
+        $title = $decision === 'approved'
+            ? 'Credential approved'
+            : 'Credential rejected';
+
+        $content = sprintf(
+            '%s %s the %s credential "%s" for %s.',
+            $reviewer?->name ?? 'HR',
+            $decision,
+            $credential->typeLabel(),
+            $credential->title,
+            $credential->employee?->full_name ?? 'an employee'
+        );
+
+        if ($notes) {
+            $content .= ' Notes: '.$notes;
+        }
+
+        $announcement = Announcement::create([
+            'title' => $title,
+            'content' => $content,
+            'priority' => $decision === 'rejected' ? 'high' : 'medium',
+            'published_at' => now(),
+            'is_published' => true,
+            'created_by' => $reviewer?->id,
+        ]);
+
+        $userIds = User::query()->pluck('id');
+
+        $rows = $userIds->map(fn ($userId) => [
+            'announcement_id' => $announcement->id,
+            'user_id' => $userId,
+            'is_read' => false,
+            'read_at' => null,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ])->all();
+
+        if (! empty($rows)) {
+            AnnouncementNotification::insert($rows);
+        }
     }
 
     public function timekeeping(Request $request): View
@@ -161,6 +229,7 @@ class OperationsController extends Controller
             $query->where(function ($q) use ($search) {
                 $q->where('first_name', 'ILIKE', "%{$search}%")
                   ->orWhere('last_name', 'ILIKE', "%{$search}%")
+                  ->orWhere('email', 'ILIKE', "%{$search}%")
                   ->orWhere('employee_id', 'ILIKE', "%{$search}%")
                   ->orWhereHas('department', fn ($dq) => $dq->where('name', 'ILIKE', "%{$search}%"));
             });
@@ -345,10 +414,44 @@ class OperationsController extends Controller
         ]);
     }
 
-    public function leaveManagement(): View
+    public function leaveManagement(Request $request): View
     {
+        $search = $request->string('search')->toString();
+        $departmentId = $request->string('department_id')->toString();
+        $selectedMonth = $request->string('month')->toString();
+
+        if (! preg_match('/^\d{4}-\d{2}$/', $selectedMonth)) {
+            $selectedMonth = now()->format('Y-m');
+        }
+
+        [$selectedYear, $selectedMonthNumber] = array_map('intval', explode('-', $selectedMonth));
+
         $employees = Employee::query()
-            ->with(['department', 'leaveBalances', 'leaveRequests'])
+            ->with([
+                'department',
+                'leaveBalances',
+                'leaveRequests' => fn ($query) => $query
+                    ->whereYear('start_date', $selectedYear)
+                    ->whereMonth('start_date', $selectedMonthNumber),
+            ])
+            ->when($search, function ($query, $searchTerm) {
+                $query->where(function ($nested) use ($searchTerm) {
+                    $nested
+                        ->where('employee_id', 'like', "%{$searchTerm}%")
+                        ->orWhere('first_name', 'like', "%{$searchTerm}%")
+                        ->orWhere('last_name', 'like', "%{$searchTerm}%")
+                        ->orWhere('email', 'like', "%{$searchTerm}%")
+                        ->orWhereHas('department', fn ($department) => $department->where('name', 'like', "%{$searchTerm}%"));
+                });
+            })
+            ->when($departmentId === 'asp', function ($query) {
+                $query->where(function ($nested) {
+                    $nested
+                        ->where('employment_type', 'Admin Support Personnel')
+                        ->orWhereHas('department', fn ($department) => $department->where('name', 'ASP'));
+                });
+            })
+            ->when(filled($departmentId) && $departmentId !== 'asp', fn ($query) => $query->where('department_id', $departmentId))
             ->orderBy('last_name')
             ->orderBy('first_name')
             ->get();
@@ -412,9 +515,26 @@ class OperationsController extends Controller
         $totalVacationUsed = (float) $leaveCards->sum('vacation_used');
         $totalSickUsed = (float) $leaveCards->sum('sick_used');
 
+        $monthOptions = collect(range(0, 11))
+            ->map(function ($offset) {
+                $date = now()->startOfMonth()->subMonths($offset);
+
+                return [
+                    'value' => $date->format('Y-m'),
+                    'label' => $date->format('F Y'),
+                ];
+            })
+            ->values();
+
         return view('hr.leavemanagement', [
             'leaveCards' => $leaveCards,
-            'departments' => Department::query()->schools()->orderBy('name')->get(),
+            'departments' => Department::query()->facultySchools()->orderBy('name')->get(),
+            'filters' => [
+                'search' => $search,
+                'department_id' => $departmentId,
+                'month' => $selectedMonth,
+            ],
+            'monthOptions' => $monthOptions,
             'stats' => [
                 'total_employees' => $leaveCards->count(),
                 'vacation_used' => (int) round($totalVacationUsed),

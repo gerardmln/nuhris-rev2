@@ -104,40 +104,28 @@
                     <div>
                         <p class="text-sm text-slate-500">Manage faculty and staff records</p>
                     </div>
-                    <div class="flex gap-2">
-                        <button data-open-modal="employee-add-existing-modal" class="rounded-lg border-2 border-[#00386f] bg-white px-4 py-2 text-sm font-semibold text-[#00386f] hover:bg-blue-50">+ Add Existing Employee</button>
-                        <button data-open-modal="employee-add-modal" class="rounded-lg bg-[#00386f] px-4 py-2 text-sm font-semibold text-white hover:bg-[#002f5d]">+ Add New Employee</button>
-                    </div>
+                    <button data-open-modal="employee-add-existing-modal" class="rounded-lg bg-[#00386f] px-4 py-2 text-sm font-semibold text-white hover:bg-[#002f5d]">+ Add Employee</button>
                 </div>
 
                 <article class="rounded-xl border border-slate-300 bg-white p-3 shadow-sm">
-                    <form method="GET" action="{{ route('employees.index') }}" class="grid grid-cols-1 gap-2 md:grid-cols-3">
-                        <div class="md:col-span-2">
+                    <form method="GET" action="{{ route('employees.index') }}" class="grid grid-cols-5 gap-2">
+                        <div class="col-span-2">
                             <input
                                 type="text"
                                 name="search"
                                 value="{{ $filters['search'] }}"
-                                placeholder="Search by name, email, or ID..."
+                                placeholder="Search by name, email, ID, or department..."
                                 class="w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-blue-400 focus:outline-none"
                             >
                         </div>
-                        <div class="grid grid-cols-2 gap-2">
-                            <select name="department_id" class="rounded-md border border-slate-300 px-2 py-2 text-sm focus:border-blue-400 focus:outline-none">
+                        <div class="col-span-3">
+                            <select name="department_id" onchange="this.form.submit()" class="w-full rounded-md border border-slate-300 px-2 py-2 text-sm focus:border-blue-400 focus:outline-none">
                                 <option value="">All Departments</option>
+                                <option value="asp" @selected($filters['department_id'] === 'asp')>Admin Support Personnel</option>
                                 @foreach ($departments as $department)
                                     <option value="{{ $department->id }}" @selected($filters['department_id'] == $department->id)>{{ $department->name }}</option>
                                 @endforeach
                             </select>
-                            <div class="flex gap-2">
-                                <select name="status" class="w-full rounded-md border border-slate-300 px-2 py-2 text-sm focus:border-blue-400 focus:outline-none">
-                                    <option value="">All Status</option>
-                                    <option value="active" @selected($filters['status'] === 'active')>Active</option>
-                                    <option value="on_leave" @selected($filters['status'] === 'on_leave')>On Leave</option>
-                                    <option value="resigned" @selected($filters['status'] === 'resigned')>Resigned</option>
-                                    <option value="terminated" @selected($filters['status'] === 'terminated')>Terminated</option>
-                                </select>
-                                <button type="submit" class="rounded-md bg-[#00386f] px-3 py-2 text-xs font-semibold text-white hover:bg-[#002f5d]">Filter</button>
-                            </div>
                         </div>
                     </form>
                 </article>
@@ -149,7 +137,6 @@
                                 <th class="px-5 py-3">Employee</th>
                                 <th class="px-4 py-3">Department</th>
                                 <th class="px-4 py-3">Position</th>
-                                <th class="px-4 py-3">Status</th>
                                 <th class="px-4 py-3">Resume</th>
                                 <th class="px-4 py-3">Actions</th>
                             </tr>
@@ -170,11 +157,6 @@
                                     </td>
                                     <td class="px-4 py-4 text-slate-700">{{ $employee->department?->name }}</td>
                                     <td class="px-4 py-4 text-slate-700">{{ $employee->position }}</td>
-                                    <td class="px-4 py-4">
-                                        <span class="rounded-full bg-emerald-100 px-2 py-1 text-xs font-semibold text-emerald-700">
-                                            {{ str_replace('_', ' ', ucfirst($employee->status)) }}
-                                        </span>
-                                    </td>
                                     <td class="px-4 py-4">
                                         @if ($employee->resume_last_updated_at)
                                             <span class="rounded border border-emerald-200 bg-emerald-50 px-2 py-1 text-xs font-semibold text-emerald-700">Updated</span>
@@ -368,8 +350,22 @@
                     <input name="last_name" type="text" class="w-full rounded-md border border-slate-300 px-4 py-2 text-lg" required>
                 </div>
                 <div>
-                    <label class="mb-1 block text-sm font-semibold text-[#1f2b8b]">Phone</label>
-                    <input name="phone" type="text" placeholder="+63 XXX XXX XXXX" class="w-full rounded-md border border-slate-300 px-4 py-2 text-lg">
+                    <label class="mb-1 block text-sm font-semibold text-[#1f2b8b]">Mobile Number</label>
+                    <div class="flex w-full overflow-hidden rounded-md border border-slate-300 focus-within:border-blue-400">
+                        <span class="inline-flex items-center border-r border-slate-300 bg-slate-50 px-3 text-base font-semibold text-slate-600">+63</span>
+                        <input
+                            name="phone"
+                            type="tel"
+                            inputmode="numeric"
+                            pattern="\d{10}"
+                            maxlength="10"
+                            autocomplete="tel-national"
+                            placeholder="9987654321"
+                            oninput="this.value = this.value.replace(/\D/g, '').slice(0, 10);"
+                            class="w-full border-0 px-4 py-2 text-lg focus:outline-none"
+                        >
+                    </div>
+                    <p class="mt-1 text-xs text-slate-500">Enter 10 digits only. Example: +63 998 765 4321</p>
                 </div>
                 <div>
                     <label class="mb-1 block text-sm font-semibold text-[#1f2b8b]">Address</label>
@@ -414,13 +410,6 @@
                             <option value="{{ $ranking }}">{{ $ranking }}</option>
                         @endforeach
                     </select>
-                </div>
-                <div>
-                    <label class="mb-1 block text-sm font-semibold text-[#1f2b8b]">Status</label>
-                    <select name="status" class="w-full rounded-md border border-slate-300 px-4 py-2 text-lg" required>
-                        <option value="active" selected>Active</option>
-                    </select>
-                    <p class="mt-1 text-xs text-slate-500">New employees start as Active. Change the status later from Edit.</p>
                 </div>
                 <div>
                     <label class="mb-1 block text-sm font-semibold text-[#1f2b8b]">Hire Date</label>
@@ -483,8 +472,22 @@
                     <input name="last_name" type="text" class="w-full rounded-md border border-slate-300 px-4 py-2 text-lg" required>
                 </div>
                 <div>
-                    <label class="mb-1 block text-sm font-semibold text-[#1f2b8b]">Phone</label>
-                    <input name="phone" type="text" placeholder="+63 XXX XXX XXXX" class="w-full rounded-md border border-slate-300 px-4 py-2 text-lg">
+                    <label class="mb-1 block text-sm font-semibold text-[#1f2b8b]">Mobile Number</label>
+                    <div class="flex w-full overflow-hidden rounded-md border border-slate-300 focus-within:border-blue-400">
+                        <span class="inline-flex items-center border-r border-slate-300 bg-slate-50 px-3 text-base font-semibold text-slate-600">+63</span>
+                        <input
+                            name="phone"
+                            type="tel"
+                            inputmode="numeric"
+                            pattern="\d{10}"
+                            maxlength="10"
+                            autocomplete="tel-national"
+                            placeholder="9987654321"
+                            oninput="this.value = this.value.replace(/\D/g, '').slice(0, 10);"
+                            class="w-full border-0 px-4 py-2 text-lg focus:outline-none"
+                        >
+                    </div>
+                    <p class="mt-1 text-xs text-slate-500">Enter 10 digits only. Example: +63 998 765 4321</p>
                 </div>
                 <div>
                     <label class="mb-1 block text-sm font-semibold text-[#1f2b8b]">Address</label>
@@ -527,12 +530,6 @@
                         @foreach ($facultyRankings as $ranking)
                             <option value="{{ $ranking }}">{{ $ranking }}</option>
                         @endforeach
-                    </select>
-                </div>
-                <div>
-                    <label class="mb-1 block text-sm font-semibold text-[#1f2b8b]">Status</label>
-                    <select name="status" class="w-full rounded-md border border-slate-300 px-4 py-2 text-lg" required>
-                        <option value="active" selected>Active</option>
                     </select>
                 </div>
                 <div>
@@ -705,15 +702,6 @@
                     </select>
                 </div>
                 <div>
-                    <label class="mb-1 block text-sm font-semibold text-[#1f2b8b]">Status</label>
-                    <select id="edit-status" name="status" class="w-full rounded-md border border-slate-300 px-4 py-2 text-lg">
-                        <option value="active">Active</option>
-                        <option value="on_leave">On Leave</option>
-                        <option value="resigned">Resigned</option>
-                        <option value="terminated">Terminated</option>
-                    </select>
-                </div>
-                <div>
                     <label class="mb-1 block text-sm font-semibold text-[#1f2b8b]">Hire Date</label>
                     <input id="edit-hire-date" name="hire_date" type="date" value="2021-06-15" class="w-full rounded-md border border-slate-300 px-4 py-2 text-lg">
                 </div>
@@ -774,7 +762,6 @@
         const editPosition = document.getElementById('edit-position');
         const editEmploymentType = document.getElementById('edit-employment-type');
         const editRanking = document.getElementById('edit-ranking');
-        const editStatus = document.getElementById('edit-status');
         const editHireDate = document.getElementById('edit-hire-date');
         const editOfficialTimeIn = document.getElementById('edit-official-time-in');
         const editOfficialTimeOut = document.getElementById('edit-official-time-out');
@@ -847,7 +834,6 @@
                 editPosition.dispatchEvent(new Event('change', { bubbles: true }));
             }
             if (editRanking) editRanking.value = ranking === 'N/A' ? '' : ranking;
-            if (editStatus) editStatus.value = status;
             if (editHireDate) editHireDate.value = hireDate;
             if (editOfficialTimeIn) editOfficialTimeIn.value = officialTimeIn;
             if (editOfficialTimeOut) editOfficialTimeOut.value = officialTimeOut;

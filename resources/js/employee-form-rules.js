@@ -12,6 +12,67 @@ function isProfessorPosition(position) {
     return normalize(position).includes('professor');
 }
 
+function rankingPrefixForPosition(position) {
+    const normalized = normalize(position);
+
+    if (normalized.includes('assistant professor')) {
+        return 'assistant professor';
+    }
+
+    if (normalized.includes('associate professor')) {
+        return 'associate professor';
+    }
+
+    if (normalized.includes('full professor')) {
+        return 'full professor';
+    }
+
+    if (normalized.includes('instructor')) {
+        return 'instructor';
+    }
+
+    return '';
+}
+
+function requiresGroupedRanking(position) {
+    return rankingPrefixForPosition(position) !== '';
+}
+
+function filterRankingOptions(rankingControl, position) {
+    if (!rankingControl) {
+        return;
+    }
+
+    const prefix = rankingPrefixForPosition(position);
+    const options = Array.from(rankingControl.options);
+    let selectedStillVisible = false;
+
+    options.forEach((option) => {
+        if (option.value === '') {
+            option.hidden = false;
+            option.disabled = false;
+            if (option.value === rankingControl.value) {
+                selectedStillVisible = true;
+            }
+            return;
+        }
+
+        const optionValue = normalize(option.value);
+        const matches = !prefix || optionValue.startsWith(prefix);
+
+        option.hidden = !matches;
+        option.disabled = !matches;
+
+        if (matches && option.value === rankingControl.value) {
+            selectedStillVisible = true;
+        }
+    });
+
+    if (!selectedStillVisible && prefix) {
+        rankingControl.value = '';
+    }
+}
+
 function getControl(form, name) {
     return form.querySelector(`[data-employee-control="${name}"]`);
 }
@@ -98,7 +159,7 @@ function updateEmployeeFormState(form) {
     const rankingControl = getControl(form, 'ranking');
 
     const needsDepartment = isTeachingPosition(position);
-    const needsRanking = isProfessorPosition(position);
+    const needsRanking = requiresGroupedRanking(position);
 
     if (departmentField && departmentControl) {
         departmentField.classList.toggle('hidden', !needsDepartment);
@@ -110,6 +171,8 @@ function updateEmployeeFormState(form) {
     }
 
     if (rankingField && rankingControl) {
+        filterRankingOptions(rankingControl, position);
+
         rankingField.classList.toggle('hidden', !needsRanking);
         rankingControl.required = needsRanking;
 

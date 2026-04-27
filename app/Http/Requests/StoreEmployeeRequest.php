@@ -32,7 +32,8 @@ class StoreEmployeeRequest extends FormRequest
         $employmentType = Str::lower((string) $this->input('employment_type'));
         $selectedPosition = Str::lower((string) $this->input('position'));
         $requiresDepartment = Str::contains($selectedPosition, ['professor', 'dean', 'program chair']);
-        $requiresRanking = Str::contains($selectedPosition, 'professor');
+        $allowedRankings = $this->allowedRankingsForPosition($selectedPosition, $rankings);
+        $requiresRanking = ! empty($allowedRankings);
 
         // Scope the allowed positions by the selected employment type so HR
         // cannot save an ASP office when employment_type=Faculty (and vice-versa).
@@ -49,7 +50,7 @@ class StoreEmployeeRequest extends FormRequest
             'first_name' => ['required', 'string', 'max:255'],
             'last_name' => ['required', 'string', 'max:255'],
             'email' => ['required', 'email', 'max:255', 'unique:employees,email'],
-            'phone' => ['nullable', 'string', 'max:50'],
+            'phone' => ['nullable', 'digits:10'],
             'address' => ['nullable', 'string', 'max:255'],
             'department_id' => [Rule::requiredIf($requiresDepartment), 'nullable', 'exists:departments,id'],
             'position' => ['required', Rule::in($allowedPositions)],
@@ -57,7 +58,7 @@ class StoreEmployeeRequest extends FormRequest
             'ranking' => [
                 Rule::requiredIf($requiresRanking),
                 'nullable',
-                Rule::in($rankings),
+                Rule::in($requiresRanking ? $allowedRankings : $rankings),
             ],
             'status' => ['nullable', 'in:active'],
             'hire_date' => ['nullable', 'date'],
@@ -71,6 +72,29 @@ class StoreEmployeeRequest extends FormRequest
     {
         return [
             'position.in' => 'The selected position does not belong to the chosen Employee Type.',
+            'ranking.in' => 'The selected Faculty Ranking does not match the selected Position.',
+            'phone.digits' => 'Mobile Number must contain exactly 10 digits after +63 (e.g., 9949960496).',
         ];
+    }
+
+    /**
+     * @param  array<int, string>  $rankings
+     * @return array<int, string>
+     */
+    private function allowedRankingsForPosition(string $selectedPosition, array $rankings): array
+    {
+        $prefix = match (true) {
+            str_contains($selectedPosition, 'assistant professor') => 'assistant professor',
+            str_contains($selectedPosition, 'associate professor') => 'associate professor',
+            str_contains($selectedPosition, 'full professor') => 'full professor',
+            str_contains($selectedPosition, 'instructor') => 'instructor',
+            default => '',
+        };
+
+        if ($prefix === '') {
+            return [];
+        }
+
+        return array_values(array_filter($rankings, fn ($ranking) => str_starts_with(Str::lower((string) $ranking), $prefix)));
     }
 }

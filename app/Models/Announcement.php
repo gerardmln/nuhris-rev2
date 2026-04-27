@@ -8,6 +8,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
 
+
 class Announcement extends Model
 {
     use HasFactory, SoftDeletes;
@@ -16,8 +17,10 @@ class Announcement extends Model
         'title',
         'content',
         'priority',
-        'target_user_type',
+        'target_employee_type',
         'target_office',
+        'target_department_id',
+        'target_ranking',
         'published_at',
         'expires_at',
         'is_published',
@@ -30,7 +33,7 @@ class Announcement extends Model
             'published_at' => 'datetime',
             'expires_at' => 'date',
             'is_published' => 'boolean',
-            'target_user_type' => 'integer',
+            'target_department_id' => 'integer',
         ];
     }
 
@@ -44,17 +47,31 @@ class Announcement extends Model
         return $this->hasMany(AnnouncementNotification::class);
     }
 
+    public function targetDepartment(): BelongsTo
+    {
+        return $this->belongsTo(Department::class, 'target_department_id');
+    }
+
     public function getAudienceLabelAttribute(): string
     {
-        if ($this->target_office) {
-            return $this->target_office;
+        $segments = [];
+
+        if ($this->target_employee_type) {
+            $segments[] = $this->target_employee_type === 'faculty' ? 'Faculty' : 'Admin Support Personnel';
         }
 
-        return match ($this->target_user_type) {
-            User::TYPE_ADMIN => 'Admin',
-            User::TYPE_HR => 'HR',
-            User::TYPE_EMPLOYEE => 'Employee',
-            default => 'Everyone',
-        };
+        if ($this->target_office) {
+            $segments[] = $this->target_office;
+        }
+
+        if ($this->targetDepartment?->name) {
+            $segments[] = $this->targetDepartment->name;
+        }
+
+        if ($this->target_ranking) {
+            $segments[] = $this->target_ranking;
+        }
+
+        return $segments ? implode(' · ', array_values(array_unique($segments))) : 'Everyone';
     }
 }

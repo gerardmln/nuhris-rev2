@@ -8,6 +8,7 @@ use App\Http\Controllers\Hr\DashboardController;
 use App\Http\Controllers\Hr\EmployeeController;
 use App\Http\Controllers\Hr\OperationsController;
 use App\Models\AnnouncementNotification;
+use App\Models\User;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Route;
 
@@ -72,6 +73,18 @@ Route::prefix('hr')->middleware(['auth', 'user.type:2'])->group(function () {
     Route::delete('/announcements/{announcement}', [AnnouncementController::class, 'destroy'])->name('announcements.destroy');
 
     Route::get('/notifications', function () {
+        /** @var User|null $user */
+        $user = Auth::user();
+
+        if ($user) {
+            $user->announcementNotifications()
+                ->where('is_read', false)
+                ->update([
+                    'is_read' => true,
+                    'read_at' => now(),
+                ]);
+        }
+
         $notifications = AnnouncementNotification::query()
             ->with('announcement')
             ->where('user_id', Auth::id())
@@ -103,6 +116,18 @@ Route::prefix('employee')->name('employee.')->middleware(['auth', 'user.type:3']
     Route::get('/leave-monitoring', [EmployeePortalController::class, 'leave'])->name('leave');
 
     Route::get('/notifications', function () {
+        /** @var User|null $user */
+        $user = Auth::user();
+
+        if ($user) {
+            $user->announcementNotifications()
+                ->where('is_read', false)
+                ->update([
+                    'is_read' => true,
+                    'read_at' => now(),
+                ]);
+        }
+
         $notifications = AnnouncementNotification::query()
             ->with('announcement')
             ->where('user_id', Auth::id())

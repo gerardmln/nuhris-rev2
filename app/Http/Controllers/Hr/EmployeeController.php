@@ -25,9 +25,8 @@ class EmployeeController extends Controller
     {
         $search = $request->string('search')->toString();
         $departmentId = $request->string('department_id')->toString();
-        $status = $request->string('status')->toString();
 
-        $employees = Employee::query()
+        $employeesQuery = Employee::query()
             ->with('department')
             ->when($search, function ($query, $searchTerm) {
                 $query->where(function ($nested) use ($searchTerm) {
@@ -35,13 +34,24 @@ class EmployeeController extends Controller
                         ->where('employee_id', 'like', "%{$searchTerm}%")
                         ->orWhere('first_name', 'like', "%{$searchTerm}%")
                         ->orWhere('last_name', 'like', "%{$searchTerm}%")
-                        ->orWhere('email', 'like', "%{$searchTerm}%");
+                        ->orWhere('email', 'like', "%{$searchTerm}%")
+                        ->orWhereHas('department', fn ($department) => $department->where('name', 'like', "%{$searchTerm}%"));
                 });
             })
-            ->when($departmentId, fn ($query, $department) => $query->where('department_id', $department))
-            ->when($status, fn ($query, $employeeStatus) => $query->where('status', $employeeStatus))
             ->orderBy('last_name')
-            ->orderBy('first_name')
+            ->orderBy('first_name');
+
+        if ($departmentId === 'asp') {
+            $employeesQuery->where(function ($query) {
+                $query
+                    ->where('employment_type', 'Admin Support Personnel')
+                    ->orWhereHas('department', fn ($department) => $department->where('name', 'ASP'));
+            });
+        } elseif (filled($departmentId)) {
+            $employeesQuery->where('department_id', $departmentId);
+        }
+
+        $employees = $employeesQuery
             ->paginate(10)
             ->withQueryString();
 
@@ -51,7 +61,6 @@ class EmployeeController extends Controller
             'filters' => [
                 'search' => $search,
                 'department_id' => $departmentId,
-                'status' => $status,
             ],
         ], $this->formOptions()));
     }

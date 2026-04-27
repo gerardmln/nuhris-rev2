@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Hr;
 
 use App\Http\Controllers\Controller;
 use App\Http\Requests\StoreAnnouncementRequest;
+use App\Models\Department;
 use App\Models\Announcement;
 use App\Models\AnnouncementNotification;
 use App\Models\User;
@@ -18,6 +19,9 @@ class AnnouncementController extends Controller
     {
         $search = $request->string('search')->toString();
         $priority = $request->string('priority')->toString();
+        $facultyPositions = array_values(config('hris.faculty_positions', []));
+        $adminSupportOffices = array_values(config('hris.admin_support_offices', []));
+        $facultyRankings = array_values(config('hris.faculty_rankings', []));
 
         $announcements = Announcement::query()
             ->latest()
@@ -33,7 +37,10 @@ class AnnouncementController extends Controller
 
         return view('hr.announcements', [
             'announcements' => $announcements,
-            'officeAudiences' => config('hris.admin_support_offices', []),
+            'facultyDepartments' => Department::query()->facultySchools()->orderBy('name')->get(),
+            'facultyPositions' => $facultyPositions,
+            'adminSupportOffices' => $adminSupportOffices,
+            'facultyRankings' => $facultyRankings,
             'filters' => [
                 'search' => $search,
                 'priority' => $priority,
@@ -59,15 +66,42 @@ class AnnouncementController extends Controller
                 'published_at' => $request->date('published_at') ?? now(),
             ]);
 
-            $userQuery = User::query();
+            $userQuery = User::query()->where('user_type', User::TYPE_EMPLOYEE);
 
-            if ($announcement->target_user_type) {
-                $userQuery->where('user_type', $announcement->target_user_type);
+            $hasEmployeeFilters = filled($announcement->target_employee_type)
+                || filled($announcement->target_office)
+                || filled($announcement->target_department_id)
+                || filled($announcement->target_ranking);
+
+            if ($hasEmployeeFilters) {
+                $userQuery->whereHas('employeeProfile');
+            }
+
+            if ($announcement->target_employee_type) {
+                $employeeType = $announcement->target_employee_type === 'faculty'
+                    ? 'Faculty'
+                    : 'Admin Support Personnel';
+
+                $userQuery->whereHas('employeeProfile', function ($query) use ($employeeType): void {
+                    $query->where('employment_type', $employeeType);
+                });
             }
 
             if ($announcement->target_office) {
                 $userQuery->whereHas('employeeProfile', function ($query) use ($announcement): void {
                     $query->where('position', $announcement->target_office);
+                });
+            }
+
+            if ($announcement->target_department_id && $announcement->target_employee_type === 'faculty') {
+                $userQuery->whereHas('employeeProfile', function ($query) use ($announcement): void {
+                    $query->where('department_id', $announcement->target_department_id);
+                });
+            }
+
+            if ($announcement->target_ranking) {
+                $userQuery->whereHas('employeeProfile', function ($query) use ($announcement): void {
+                    $query->where('ranking', $announcement->target_ranking);
                 });
             }
 

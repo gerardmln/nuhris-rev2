@@ -75,11 +75,30 @@
 
     <article class="rounded-xl border border-slate-300 bg-white p-3 shadow-sm">
         <div class="grid grid-cols-1 gap-2 md:grid-cols-3">
-            <div class="md:col-span-2"><input type="text" placeholder="Search Employees" class="w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-blue-400 focus:outline-none"></div>
-            <div class="grid grid-cols-2 gap-2">
-                <select class="rounded-md border border-slate-300 px-2 py-2 text-sm focus:border-blue-400 focus:outline-none"><option>All Departments</option>@foreach ($departments as $department)<option>{{ $department->name }}</option>@endforeach</select>
-                <select class="rounded-md border border-slate-300 px-2 py-2 text-sm focus:border-blue-400 focus:outline-none"><option>{{ now()->format('F Y') }}</option></select>
-            </div>
+            <form method="GET" action="{{ route('leave.index') }}" class="md:col-span-2 grid grid-cols-1 gap-2 md:grid-cols-2">
+                <input
+                    type="text"
+                    name="search"
+                    value="{{ $filters['search'] ?? '' }}"
+                    placeholder="Search by name, email, ID, or department..."
+                    class="w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-blue-400 focus:outline-none"
+                >
+                <select name="department_id" onchange="this.form.submit()" class="rounded-md border border-slate-300 px-2 py-2 text-sm focus:border-blue-400 focus:outline-none">
+                    <option value="">All Departments</option>
+                    <option value="asp" @selected(($filters['department_id'] ?? '') === 'asp')>Admin Support Personnel</option>
+                    @foreach ($departments as $department)
+                        <option value="{{ $department->id }}" @selected(($filters['department_id'] ?? '') == $department->id)>{{ $department->name }}</option>
+                    @endforeach
+                </select>
+            </form>
+
+            <form method="POST" action="{{ route('leaves.clear') }}" class="js-loading-form md:col-span-1"
+                  onsubmit="return confirm('Clear ALL uploaded leave applications in the system? This cannot be undone.');">
+                @csrf
+                <button type="submit" class="w-full rounded-md border border-red-300 bg-red-50 px-3 py-2 text-sm font-semibold text-red-700 hover:bg-red-100 transition">
+                    Clear All Leave Data
+                </button>
+            </form>
         </div>
     </article>
 
