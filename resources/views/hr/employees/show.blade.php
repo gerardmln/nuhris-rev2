@@ -28,8 +28,6 @@
                 <div><p class="text-xs text-slate-500">Ranking</p><p class="font-semibold">{{ $employee->ranking ?? 'N/A' }}</p></div>
                 <div><p class="text-xs text-slate-500">Status</p><p class="font-semibold">{{ str_replace('_', ' ', ucfirst($employee->status)) }}</p></div>
                 <div><p class="text-xs text-slate-500">Hire Date</p><p class="font-semibold">{{ $employee->hire_date?->format('M d, Y') ?? 'N/A' }}</p></div>
-                <div><p class="text-xs text-slate-500">Official Time In</p><p class="font-semibold">{{ $employee->official_time_in?->format('H:i') ?? 'N/A' }}</p></div>
-                <div><p class="text-xs text-slate-500">Official Time Out</p><p class="font-semibold">{{ $employee->official_time_out?->format('H:i') ?? 'N/A' }}</p></div>
                 <div><p class="text-xs text-slate-500">Resume Last Updated</p><p class="font-semibold">{{ $employee->resume_last_updated_at?->format('M d, Y') ?? 'N/A' }}</p></div>
             </div>
         </div>

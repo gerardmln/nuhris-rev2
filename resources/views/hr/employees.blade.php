@@ -256,8 +256,6 @@
                                                         data-employee-ranking="{{ $employee->ranking }}"
                                                         data-employee-status="{{ $employee->status }}"
                                                         data-employee-hire-date="{{ $employee->hire_date?->format('Y-m-d') }}"
-                                                        data-employee-official-time-in="{{ $employee->official_time_in?->format('H:i') }}"
-                                                        data-employee-official-time-out="{{ $employee->official_time_out?->format('H:i') }}"
                                                         data-employee-resume-last-updated="{{ $employee->resume_last_updated_at?->format('Y-m-d') }}"
                                                         @click="open = false"
                                                         class="mb-1 block rounded-lg border border-slate-300 px-3 py-2 text-center text-sm font-semibold text-slate-800 hover:bg-slate-50">View Details</a>
@@ -278,8 +276,6 @@
                                                         data-employee-ranking="{{ $employee->ranking }}"
                                                         data-employee-status="{{ $employee->status }}"
                                                         data-employee-hire-date="{{ $employee->hire_date?->format('Y-m-d') }}"
-                                                        data-employee-official-time-in="{{ $employee->official_time_in?->format('H:i') }}"
-                                                        data-employee-official-time-out="{{ $employee->official_time_out?->format('H:i') }}"
                                                         data-employee-resume-last-updated="{{ $employee->resume_last_updated_at?->format('Y-m-d') }}"
                                                         @click="open = false"
                                                         class="mb-1 block rounded-lg border border-slate-300 px-3 py-2 text-center text-sm font-semibold text-slate-800 hover:bg-slate-50">Edit</a>
@@ -416,14 +412,6 @@
                     <input name="hire_date" type="date" class="w-full rounded-md border border-slate-300 px-4 py-2 text-lg">
                 </div>
                 <div>
-                    <label class="mb-1 block text-sm font-semibold text-[#1f2b8b]">Official Time In</label>
-                    <input name="official_time_in" type="time" class="w-full rounded-md border border-slate-300 px-4 py-2 text-lg">
-                </div>
-                <div>
-                    <label class="mb-1 block text-sm font-semibold text-[#1f2b8b]">Official Time Out</label>
-                    <input name="official_time_out" type="time" class="w-full rounded-md border border-slate-300 px-4 py-2 text-lg">
-                </div>
-                <div>
                     <label class="mb-1 block text-sm font-semibold text-[#1f2b8b]">Resume Last Updated</label>
                     <input name="resume_last_updated_at" type="date" class="w-full rounded-md border border-slate-300 px-4 py-2 text-lg">
                 </div>
@@ -535,14 +523,6 @@
                 <div>
                     <label class="mb-1 block text-sm font-semibold text-[#1f2b8b]">Hire Date</label>
                     <input name="hire_date" type="date" class="w-full rounded-md border border-slate-300 px-4 py-2 text-lg">
-                </div>
-                <div>
-                    <label class="mb-1 block text-sm font-semibold text-[#1f2b8b]">Official Time In</label>
-                    <input name="official_time_in" type="time" class="w-full rounded-md border border-slate-300 px-4 py-2 text-lg">
-                </div>
-                <div>
-                    <label class="mb-1 block text-sm font-semibold text-[#1f2b8b]">Official Time Out</label>
-                    <input name="official_time_out" type="time" class="w-full rounded-md border border-slate-300 px-4 py-2 text-lg">
                 </div>
                 <div>
                     <label class="mb-1 block text-sm font-semibold text-[#1f2b8b]">Resume Last Updated</label>
@@ -704,14 +684,6 @@
                 <div>
                     <label class="mb-1 block text-sm font-semibold text-[#1f2b8b]">Hire Date</label>
                     <input id="edit-hire-date" name="hire_date" type="date" value="2021-06-15" class="w-full rounded-md border border-slate-300 px-4 py-2 text-lg">
-                </div>
-                <div>
-                    <label class="mb-1 block text-sm font-semibold text-[#1f2b8b]">Official Time In</label>
-                    <input id="edit-official-time-in" name="official_time_in" type="time" class="w-full rounded-md border border-slate-300 px-4 py-2 text-lg">
-                </div>
-                <div>
-                    <label class="mb-1 block text-sm font-semibold text-[#1f2b8b]">Official Time Out</label>
-                    <input id="edit-official-time-out" name="official_time_out" type="time" class="w-full rounded-md border border-slate-300 px-4 py-2 text-lg">
                 </div>
                 <div>
                     <label class="mb-1 block text-sm font-semibold text-[#1f2b8b]">Resume Last Updated</label>

@@ -27,7 +27,7 @@
                 <div><dt class="font-semibold">Phone</dt><dd>{{ $employee->phone ?? 'N/A' }}</dd></div>
                 <div><dt class="font-semibold">Department</dt><dd>{{ $employee->department->name ?? 'Unassigned' }}</dd></div>
                 <div><dt class="font-semibold">Hired</dt><dd>{{ optional($employee->hire_date)->format('M d, Y') ?? 'N/A' }}</dd></div>
-                <div><dt class="font-semibold">Official Time</dt><dd>{{ optional($employee->official_time_in)->format('H:i') ?? '08:30' }} - {{ optional($employee->official_time_out)->format('H:i') ?? '17:30' }}</dd></div>
+                <div><dt class="font-semibold">Approved Schedule</dt><dd>{{ $schedule_summary }}</dd></div>
                 <div><dt class="font-semibold">Employee ID</dt><dd>{{ $employee->employee_id }}</dd></div>
             </dl>
         @else

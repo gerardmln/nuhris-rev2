@@ -7,8 +7,9 @@ use App\Http\Controllers\Hr\AnnouncementController;
 use App\Http\Controllers\Hr\DashboardController;
 use App\Http\Controllers\Hr\EmployeeController;
 use App\Http\Controllers\Hr\OperationsController;
+use App\Http\Controllers\Hr\ScheduleManagementController;
 use App\Models\AnnouncementNotification;
-use App\Models\User;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Route;
 
@@ -58,6 +59,13 @@ Route::prefix('hr')->middleware(['auth', 'user.type:2'])->group(function () {
 
     Route::get('/timekeeping/daily-time-record/export-excel', [OperationsController::class, 'exportDtrExcel'])->name('timekeeping.dtr.export-excel');
 
+    Route::get('/schedule-management', [ScheduleManagementController::class, 'index'])->name('schedules.index');
+    Route::post('/schedule-management/{submission}/approve', [ScheduleManagementController::class, 'approve'])->whereNumber('submission')->name('schedules.approve');
+    Route::post('/schedule-management/{submission}/decline', [ScheduleManagementController::class, 'decline'])->whereNumber('submission')->name('schedules.decline');
+    Route::post('/schedule-management/{submission}/clear', [ScheduleManagementController::class, 'clear'])->whereNumber('submission')->name('schedules.clear');
+    Route::post('/schedule-management/employee/{employee}/reset', [ScheduleManagementController::class, 'resetEmployee'])->whereNumber('employee')->name('schedules.employee.reset');
+    Route::post('/schedule-management/reset', [ScheduleManagementController::class, 'resetSemester'])->name('schedules.reset');
+
     Route::get('/leave-management', [OperationsController::class, 'leaveManagement'])->name('leave.index');
 
     Route::post('/leave-management/upload', [OperationsController::class, 'uploadLeaves'])->name('leaves.upload');
@@ -68,24 +76,24 @@ Route::prefix('hr')->middleware(['auth', 'user.type:2'])->group(function () {
 
     Route::get('/announcements', [AnnouncementController::class, 'index'])->name('announcements.index');
 
+    Route::delete('/announcements/clear-all', function (Request $request) {
+        $cleared = \App\Models\Announcement::query()
+            ->where(function ($query) {
+                $query->whereNull('target_employee_type')
+                    ->orWhereIn('target_employee_type', ['faculty', 'admin_support']);
+            })
+            ->forceDelete();
+
+        return redirect()->route('announcements.index')->with('success', $cleared > 0 ? 'All announcements were cleared.' : 'No announcements to clear.');
+    })->name('announcements.clear-all');
+
     Route::post('/announcements', [AnnouncementController::class, 'store'])->name('announcements.store');
 
     Route::delete('/announcements/{announcement}', [AnnouncementController::class, 'destroy'])->name('announcements.destroy');
 
     Route::get('/notifications', function () {
-        /** @var User|null $user */
-        $user = Auth::user();
-
-        if ($user) {
-            $user->announcementNotifications()
-                ->where('is_read', false)
-                ->update([
-                    'is_read' => true,
-                    'read_at' => now(),
-                ]);
-        }
-
         $notifications = AnnouncementNotification::query()
+            ->visible()
             ->with('announcement')
             ->where('user_id', Auth::id())
             ->latest()
@@ -95,6 +103,27 @@ Route::prefix('hr')->middleware(['auth', 'user.type:2'])->group(function () {
             'notifications' => $notifications,
         ]);
     })->name('notifications.index');
+
+    Route::delete('/notifications/clear-all', function (Request $request) {
+        $deleted = AnnouncementNotification::query()
+            ->where('user_id', $request->user()?->id)
+            ->delete();
+
+        return redirect()->route('notifications.index')->with('success', $deleted > 0 ? 'All notifications were cleared.' : 'No notifications to clear.');
+    })->name('notifications.clear-all');
+
+    Route::get('/notifications/{notification}/open', function (Request $request, AnnouncementNotification $notification) {
+        abort_unless($notification->user_id === $request->user()?->id, 403);
+
+        if (! $notification->is_read) {
+            $notification->forceFill([
+                'is_read' => true,
+                'read_at' => now(),
+            ])->save();
+        }
+
+        return redirect()->to($notification->redirect_url ?: route('notifications.index'));
+    })->name('notifications.open');
 });
 
 // Employee (User) Module Routes
@@ -112,23 +141,13 @@ Route::prefix('employee')->name('employee.')->middleware(['auth', 'user.type:3']
     Route::post('/credentials/upload', [EmployeePortalController::class, 'storeCredential'])->name('credentials.upload.store');
 
     Route::get('/attendance-dtr', [EmployeePortalController::class, 'attendance'])->name('attendance');
+    Route::post('/attendance-dtr/schedule', [EmployeePortalController::class, 'storeSchedule'])->name('attendance.schedule.store');
 
     Route::get('/leave-monitoring', [EmployeePortalController::class, 'leave'])->name('leave');
 
     Route::get('/notifications', function () {
-        /** @var User|null $user */
-        $user = Auth::user();
-
-        if ($user) {
-            $user->announcementNotifications()
-                ->where('is_read', false)
-                ->update([
-                    'is_read' => true,
-                    'read_at' => now(),
-                ]);
-        }
-
         $notifications = AnnouncementNotification::query()
+            ->visible()
             ->with('announcement')
             ->where('user_id', Auth::id())
             ->latest()
@@ -138,6 +157,27 @@ Route::prefix('employee')->name('employee.')->middleware(['auth', 'user.type:3']
             'notifications' => $notifications,
         ]);
     })->name('notifications');
+
+    Route::delete('/notifications/clear-all', function (Request $request) {
+        $deleted = AnnouncementNotification::query()
+            ->where('user_id', $request->user()?->id)
+            ->delete();
+
+        return redirect()->route('employee.notifications')->with('success', $deleted > 0 ? 'All notifications were cleared.' : 'No notifications to clear.');
+    })->name('notifications.clear-all');
+
+    Route::get('/notifications/{notification}/open', function (Request $request, AnnouncementNotification $notification) {
+        abort_unless($notification->user_id === $request->user()?->id, 403);
+
+        if (! $notification->is_read) {
+            $notification->forceFill([
+                'is_read' => true,
+                'read_at' => now(),
+            ])->save();
+        }
+
+        return redirect()->to($notification->redirect_url ?: route('employee.notifications'));
+    })->name('notifications.open');
 
     Route::get('/account', [EmployeePortalController::class, 'account'])->name('account');
 

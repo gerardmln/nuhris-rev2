@@ -15,6 +15,7 @@ class AnnouncementNotification extends Model
         'user_id',
         'is_read',
         'read_at',
+        'redirect_url',
     ];
 
     protected function casts(): array
@@ -23,6 +24,23 @@ class AnnouncementNotification extends Model
             'is_read' => 'boolean',
             'read_at' => 'datetime',
         ];
+    }
+
+    public function scopeVisible($query)
+    {
+        return $query->whereHas('announcement', function ($q) {
+            $q->visible();
+        });
+    }
+
+    public function getTitleTextAttribute(): string
+    {
+        return $this->announcement?->title ?? 'Notification';
+    }
+
+    public function getContentTextAttribute(): string
+    {
+        return $this->announcement?->content ?? 'No details available.';
     }
 
     public function announcement(): BelongsTo

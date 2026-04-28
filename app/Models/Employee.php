@@ -56,8 +56,6 @@ class Employee extends Model
         'ranking',
         'status',
         'hire_date',
-        'official_time_in',
-        'official_time_out',
         'resume_last_updated_at',
     ];
 
@@ -65,8 +63,6 @@ class Employee extends Model
     {
         return [
             'hire_date' => 'date',
-            'official_time_in' => 'datetime:H:i',
-            'official_time_out' => 'datetime:H:i',
             'resume_last_updated_at' => 'date',
         ];
     }
@@ -99,5 +95,15 @@ class Employee extends Model
     public function leaveRequests(): HasMany
     {
         return $this->hasMany(LeaveRequest::class);
+    }
+
+    public function scheduleSubmissions(): HasMany
+    {
+        return $this->hasMany(EmployeeScheduleSubmission::class);
+    }
+
+    public function approvedScheduleSubmission(): HasMany
+    {
+        return $this->hasMany(EmployeeScheduleSubmission::class)->where('status', EmployeeScheduleSubmission::STATUS_APPROVED);
     }
 }

@@ -154,7 +154,7 @@
                         No biometric data yet — upload a Timesheet PDF to populate.
                     </p>
                 @endunless
-                <p class="mt-3 text-xs text-slate-500">Official: {{ $card['official_time'] }}</p>
+                <p class="mt-3 text-xs text-slate-500">Schedule: {{ $card['schedule_summary'] }}</p>
                 <a href="{{ route('timekeeping.dtr', ['employee' => $card['id'], 'month' => $selectedMonth, 'year' => $selectedYear]) }}" class="mt-3 block w-full rounded-md bg-[#00386f] px-3 py-2 text-center text-sm font-semibold text-white hover:bg-[#002f5d] transition">View DTR</a>
             </article>
         @empty

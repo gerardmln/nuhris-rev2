@@ -20,6 +20,8 @@ class AttendanceRecord extends Model
         'tardiness_minutes',
         'undertime_minutes',
         'overtime_minutes',
+        'schedule_status',
+        'schedule_notes',
         'status',
     ];
 
@@ -31,6 +33,7 @@ class AttendanceRecord extends Model
             'time_out' => 'datetime:H:i',
             'scheduled_time_in' => 'datetime:H:i',
             'scheduled_time_out' => 'datetime:H:i',
+            'overtime_minutes' => 'integer',
         ];
     }
 

@@ -23,7 +23,13 @@ class AnnouncementController extends Controller
         $adminSupportOffices = array_values(config('hris.admin_support_offices', []));
         $facultyRankings = array_values(config('hris.faculty_rankings', []));
 
-        $announcements = Announcement::query()
+        $officialAnnouncementsQuery = Announcement::query()
+            ->where(function ($query) {
+                $query->whereNull('target_employee_type')
+                    ->orWhereIn('target_employee_type', ['faculty', 'admin_support']);
+            });
+
+        $announcements = (clone $officialAnnouncementsQuery)
             ->latest()
             ->when($search, function ($query, $term) {
                 $query->where(function ($nested) use ($term) {
@@ -46,10 +52,10 @@ class AnnouncementController extends Controller
                 'priority' => $priority,
             ],
             'stats' => [
-                'total' => Announcement::count(),
-                'active' => Announcement::where('is_published', true)->count(),
-                'urgent' => Announcement::where('priority', 'high')->count(),
-                'current_month' => Announcement::whereYear('created_at', now()->year)
+                'total' => (clone $officialAnnouncementsQuery)->count(),
+                'active' => (clone $officialAnnouncementsQuery)->where('is_published', true)->count(),
+                'urgent' => (clone $officialAnnouncementsQuery)->where('priority', 'high')->count(),
+                'current_month' => (clone $officialAnnouncementsQuery)->whereYear('created_at', now()->year)
                     ->whereMonth('created_at', now()->month)
                     ->count(),
             ],
@@ -61,9 +67,9 @@ class AnnouncementController extends Controller
         DB::transaction(function () use ($request): void {
             $announcement = Announcement::create([
                 ...$request->validated(),
-                'is_published' => $request->boolean('is_published'),
+                'is_published' => true,
                 'created_by' => $request->user()->id,
-                'published_at' => $request->date('published_at') ?? now(),
+                'published_at' => now(),
             ]);
 
             $userQuery = User::query()->where('user_type', User::TYPE_EMPLOYEE);
@@ -112,6 +118,7 @@ class AnnouncementController extends Controller
                 'user_id' => $userId,
                 'is_read' => false,
                 'read_at' => null,
+                'redirect_url' => route('employee.notifications'),
                 'created_at' => now(),
                 'updated_at' => now(),
             ])->all();

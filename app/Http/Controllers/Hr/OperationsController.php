@@ -11,6 +11,7 @@ use App\Models\Employee;
 use App\Models\EmployeeCredential;
 use App\Models\LeaveRequest;
 use App\Models\User;
+use App\Services\EmployeeScheduleService;
 use App\Services\SupabaseStorageService;
 use Carbon\Carbon;
 use Carbon\CarbonPeriod;
@@ -19,6 +20,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\View\View;
+use PhpOffice\PhpSpreadsheet\Cell\Coordinate;
 use PhpOffice\PhpSpreadsheet\IOFactory as SpreadsheetIOFactory;
 use Smalot\PdfParser\Parser as PdfParser;
 
@@ -26,6 +28,7 @@ class OperationsController extends Controller
 {
     public function profile(Request $request): View
     {
+        $scheduleService = app(EmployeeScheduleService::class);
         $employeeId = $request->integer('employee');
 
         $employee = Employee::query()
@@ -37,6 +40,7 @@ class OperationsController extends Controller
 
         return view('hr.viewemployeeprofile', [
             'employee' => $employee,
+            'schedule_summary' => $scheduleService->summarizeSubmission($employee ? $scheduleService->currentSubmission($employee) : null),
         ]);
     }
 
@@ -192,18 +196,27 @@ class OperationsController extends Controller
             'title' => $title,
             'content' => $content,
             'priority' => $decision === 'rejected' ? 'high' : 'medium',
+            'target_employee_type' => 'employee',
             'published_at' => now(),
             'is_published' => true,
             'created_by' => $reviewer?->id,
         ]);
 
-        $userIds = User::query()->pluck('id');
+        $employeeEmail = $credential->employee?->email;
+        if (! $employeeEmail) {
+            return;
+        }
 
-        $rows = $userIds->map(fn ($userId) => [
+        $employeeUserIds = User::query()
+            ->where('email', $employeeEmail)
+            ->pluck('id');
+
+        $rows = $employeeUserIds->map(fn ($userId) => [
             'announcement_id' => $announcement->id,
             'user_id' => $userId,
             'is_read' => false,
             'read_at' => null,
+            'redirect_url' => route('employee.credentials'),
             'created_at' => now(),
             'updated_at' => now(),
         ])->all();
@@ -215,6 +228,7 @@ class OperationsController extends Controller
 
     public function timekeeping(Request $request): View
     {
+        $scheduleService = app(EmployeeScheduleService::class);
         $month = $request->integer('month', (int) now()->month);
         $year = $request->integer('year', (int) now()->year);
         $search = $request->string('search')->trim()->toString();
@@ -235,7 +249,7 @@ class OperationsController extends Controller
             });
         }
 
-        $employeeCards = $query->get()->map(function (Employee $employee) use ($selectedDate) {
+        $employeeCards = $query->get()->map(function (Employee $employee) use ($selectedDate, $scheduleService) {
             $monthStart = $selectedDate->copy()->startOfMonth();
             $monthEnd = $selectedDate->copy()->endOfMonth();
 
@@ -254,7 +268,7 @@ class OperationsController extends Controller
                 'present' => $presentDays,
                 'tardiness' => $totalTardiness,
                 'has_data' => $attendanceRecords->isNotEmpty(),
-                'official_time' => sprintf('%s - %s', optional($employee->official_time_in)?->format('H:i') ?? '08:30', optional($employee->official_time_out)?->format('H:i') ?? '17:30'),
+                'schedule_summary' => $scheduleService->summarizeSubmission($scheduleService->currentSubmission($employee)),
             ];
         });
 
@@ -281,6 +295,7 @@ class OperationsController extends Controller
 
     public function dailyTimeRecord(Request $request): View
     {
+        $scheduleService = app(EmployeeScheduleService::class);
         $employeeId = $request->integer('employee');
         $month = $request->integer('month', (int) now()->month);
         $year = $request->integer('year', (int) now()->year);
@@ -318,7 +333,7 @@ class OperationsController extends Controller
             'records' => $records,
             'summary' => $summary,
             'period_label' => $selectedDate->format('F Y'),
-            'official_time' => sprintf('%s - %s', optional($employee?->official_time_in)?->format('H:i') ?? '08:30', optional($employee?->official_time_out)?->format('H:i') ?? '17:30'),
+            'schedule_summary' => $scheduleService->summarizeSubmission($employee ? $scheduleService->approvedSubmissionForDate($employee, $selectedDate) : null),
             'periods' => $periods,
             'selectedMonth' => $month,
             'selectedYear' => $year,
@@ -327,6 +342,7 @@ class OperationsController extends Controller
 
     public function exportDtrPdf(Request $request)
     {
+        $scheduleService = app(EmployeeScheduleService::class);
         $employeeId = $request->integer('employee');
         $month = $request->integer('month', (int) now()->month);
         $year = $request->integer('year', (int) now()->year);
@@ -349,7 +365,7 @@ class OperationsController extends Controller
             'records' => $records,
             'summary' => $summary,
             'period_label' => $selectedDate->format('F Y'),
-            'official_time' => sprintf('%s - %s', optional($employee?->official_time_in)?->format('H:i') ?? '08:30', optional($employee?->official_time_out)?->format('H:i') ?? '17:30'),
+            'schedule_summary' => $scheduleService->summarizeSubmission($employee ? $scheduleService->approvedSubmissionForDate($employee, $selectedDate) : null),
         ]);
 
         $filename = 'DTR_' . str_replace(' ', '_', $employee?->full_name ?? 'Employee') . '_' . $selectedDate->format('F_Y') . '.pdf';
@@ -358,6 +374,7 @@ class OperationsController extends Controller
 
     public function exportDtrExcel(Request $request)
     {
+        $scheduleService = app(EmployeeScheduleService::class);
         $employeeId = $request->integer('employee');
         $month = $request->integer('month', (int) now()->month);
         $year = $request->integer('year', (int) now()->year);
@@ -383,20 +400,20 @@ class OperationsController extends Controller
         // Column headers
         $headers = ['Date', 'Day', 'Time In', 'Time Out', 'Tardiness (min)', 'Undertime (min)', 'Status'];
         foreach ($headers as $col => $h) {
-            $sheet->setCellValueByColumnAndRow($col + 1, 4, $h);
+            $sheet->setCellValue(Coordinate::stringFromColumnIndex($col + 1).'4', $h);
         }
         $sheet->getStyle('A4:G4')->getFont()->setBold(true);
 
         // Data
         $row = 5;
         foreach ($records as $r) {
-            $sheet->setCellValueByColumnAndRow(1, $row, $r['date']);
-            $sheet->setCellValueByColumnAndRow(2, $row, $r['day']);
-            $sheet->setCellValueByColumnAndRow(3, $row, $r['time_in']);
-            $sheet->setCellValueByColumnAndRow(4, $row, $r['time_out']);
-            $sheet->setCellValueByColumnAndRow(5, $row, $r['tardiness_minutes'] ?: '-');
-            $sheet->setCellValueByColumnAndRow(6, $row, $r['undertime_minutes'] ?: '-');
-            $sheet->setCellValueByColumnAndRow(7, $row, $r['status']);
+            $sheet->setCellValue('A'.$row, $r['date']);
+            $sheet->setCellValue('B'.$row, $r['day']);
+            $sheet->setCellValue('C'.$row, $r['time_in']);
+            $sheet->setCellValue('D'.$row, $r['time_out']);
+            $sheet->setCellValue('E'.$row, $r['tardiness_minutes'] ?: '-');
+            $sheet->setCellValue('F'.$row, $r['undertime_minutes'] ?: '-');
+            $sheet->setCellValue('G'.$row, $r['status']);
             $row++;
         }
 
@@ -418,21 +435,12 @@ class OperationsController extends Controller
     {
         $search = $request->string('search')->toString();
         $departmentId = $request->string('department_id')->toString();
-        $selectedMonth = $request->string('month')->toString();
-
-        if (! preg_match('/^\d{4}-\d{2}$/', $selectedMonth)) {
-            $selectedMonth = now()->format('Y-m');
-        }
-
-        [$selectedYear, $selectedMonthNumber] = array_map('intval', explode('-', $selectedMonth));
 
         $employees = Employee::query()
             ->with([
                 'department',
                 'leaveBalances',
-                'leaveRequests' => fn ($query) => $query
-                    ->whereYear('start_date', $selectedYear)
-                    ->whereMonth('start_date', $selectedMonthNumber),
+                'leaveRequests',
             ])
             ->when($search, function ($query, $searchTerm) {
                 $query->where(function ($nested) use ($searchTerm) {
@@ -458,13 +466,28 @@ class OperationsController extends Controller
 
         $leaveCards = $employees->map(function (Employee $employee) {
             $balances = $employee->leaveBalances;
-            $requests = $employee->leaveRequests;
+            $today = now()->startOfDay();
+            $hireDate = $employee->hire_date ? Carbon::parse($employee->hire_date)->startOfDay() : null;
 
-            $activeRequests = $requests->whereIn('status', ['approved', 'pending']);
-            $used = (float) $activeRequests->sum('days_deducted');
+            $requests = $employee->leaveRequests->filter(function (LeaveRequest $request) use ($hireDate, $today) {
+                if (! $request->start_date) {
+                    return false;
+                }
+
+                $startDate = $request->start_date->copy()->startOfDay();
+
+                if ($hireDate && $startDate->lt($hireDate)) {
+                    return false;
+                }
+
+                return $startDate->lte($today);
+            });
+
+            // Only approved leave requests should affect usage totals.
+            $approvedRequests = $requests->where('status', 'approved');
 
             // Calculate used days per leave type from actual requests
-            $usedByType = $activeRequests->groupBy(fn ($r) => strtolower((string) $r->leave_type));
+            $usedByType = $approvedRequests->groupBy(fn ($r) => strtolower((string) $r->leave_type));
 
             $vacationUsed = (float) collect(['vacation leave', 'vacation', 'vl'])
                 ->flatMap(fn ($key) => $usedByType->get($key, collect()))
@@ -477,6 +500,9 @@ class OperationsController extends Controller
             $emergencyUsed = (float) collect(['emergency leave', 'emergency', 'el'])
                 ->flatMap(fn ($key) => $usedByType->get($key, collect()))
                 ->sum('days_deducted');
+
+            // Keep total aligned with the displayed approved leave-type buckets.
+            $used = $vacationUsed + $sickUsed + $emergencyUsed;
 
             // If leave balances table has data, use that for remaining
             // Otherwise show the used counts from requests (more useful than 0)
@@ -532,7 +558,6 @@ class OperationsController extends Controller
             'filters' => [
                 'search' => $search,
                 'department_id' => $departmentId,
-                'month' => $selectedMonth,
             ],
             'monthOptions' => $monthOptions,
             'stats' => [
@@ -550,10 +575,17 @@ class OperationsController extends Controller
      */
     private function normalizeEmployeeId(string $id): string
     {
-        return str_replace('-', '', trim($id));
+        $normalized = preg_replace('/[^A-Za-z0-9]/', '', trim($id)) ?? '';
+
+        // Handle Excel numeric IDs that may come as 238066.0 after casting.
+        if (preg_match('/^\d+\.0+$/', $normalized)) {
+            $normalized = strstr($normalized, '.', true) ?: $normalized;
+        }
+
+        return $normalized;
     }
 
-    public function uploadBiometrics(Request $request): RedirectResponse
+    public function uploadBiometrics(Request $request, EmployeeScheduleService $scheduleService): RedirectResponse
     {
         $validated = $request->validate([
             'biometrics_file' => ['required', 'file', 'mimes:pdf', 'max:10240'],
@@ -618,24 +650,15 @@ class OperationsController extends Controller
                 }
 
                 $recordDate = Carbon::parse($record['date']);
-                $scheduledIn = $employee->official_time_in ? Carbon::parse($employee->official_time_in) : Carbon::createFromTime(8, 30);
-                $scheduledOut = $employee->official_time_out ? Carbon::parse($employee->official_time_out) : Carbon::createFromTime(17, 30);
-
                 $timeIn = !empty($record['time_in']) ? Carbon::parse($record['time_in']) : null;
                 $timeOut = !empty($record['time_out']) ? Carbon::parse($record['time_out']) : null;
 
-                $tardiness = 0;
-                $undertime = 0;
-                $status = 'absent';
-
-                if ($timeIn) {
-                    $status = 'present';
-                    $tardiness = max(0, (int) $timeIn->diffInMinutes($scheduledIn, false) * -1);
-                }
-
-                if ($timeOut && $timeIn) {
-                    $undertime = max(0, (int) $scheduledOut->diffInMinutes($timeOut, false) * -1);
-                }
+                $evaluation = $scheduleService->evaluateDailyRecord(
+                    $employee,
+                    $recordDate,
+                    $record['time_in'] ?? null,
+                    $record['time_out'] ?? null,
+                );
 
                 AttendanceRecord::updateOrCreate(
                     [
@@ -645,11 +668,14 @@ class OperationsController extends Controller
                     [
                         'time_in' => $timeIn?->format('H:i:s'),
                         'time_out' => $timeOut?->format('H:i:s'),
-                        'scheduled_time_in' => $scheduledIn->format('H:i:s'),
-                        'scheduled_time_out' => $scheduledOut->format('H:i:s'),
-                        'tardiness_minutes' => $tardiness,
-                        'undertime_minutes' => $undertime,
-                        'status' => $status,
+                        'scheduled_time_in' => $evaluation['scheduled_time_in'],
+                        'scheduled_time_out' => $evaluation['scheduled_time_out'],
+                        'tardiness_minutes' => $evaluation['tardiness_minutes'],
+                        'undertime_minutes' => $evaluation['undertime_minutes'],
+                        'overtime_minutes' => $evaluation['overtime_minutes'],
+                        'schedule_status' => $evaluation['schedule_status'],
+                        'schedule_notes' => $evaluation['schedule_notes'],
+                        'status' => $evaluation['status'],
                     ]
                 );
 
@@ -822,8 +848,11 @@ class OperationsController extends Controller
         $allEmployees = Employee::all();
         $byExactId = $allEmployees->keyBy('employee_id');
         $byNormalizedId = [];
+        $byNameIndex = [];
         foreach ($allEmployees as $emp) {
             $byNormalizedId[$this->normalizeEmployeeId($emp->employee_id)] = $emp;
+            $lastKey = mb_strtolower(trim((string) $emp->last_name));
+            $byNameIndex[$lastKey][] = $emp;
         }
 
         $imported = 0;
@@ -845,15 +874,16 @@ class OperationsController extends Controller
                 continue;
             }
 
-            // Try exact match first, then normalized match
-            $employee = null;
-            if ($employeeCode !== '') {
-                $employee = $byExactId->get($employeeCode);
-                if (! $employee) {
-                    $normalizedCode = $this->normalizeEmployeeId($employeeCode);
-                    $employee = $byNormalizedId[$normalizedCode] ?? null;
-                }
-            }
+            // Try ID-based match first, then name fallback for robustness.
+            $employee = $this->findEmployeeInMemory(
+                [
+                    'employee_id' => $employeeCode,
+                    'name' => $employeeName,
+                ],
+                $byExactId,
+                $byNormalizedId,
+                $byNameIndex,
+            );
 
             if (! $employee) {
                 $skipped++;
@@ -1277,6 +1307,12 @@ class OperationsController extends Controller
 
                 if ($dbRecords->has($dateKey)) {
                     $record = $dbRecords->get($dateKey);
+                    $statusLabel = match ($record->schedule_status) {
+                        'no_schedule' => 'No schedule available',
+                        'non_working_day' => 'Non-working day',
+                        default => ucfirst($record->status),
+                    };
+
                     return [
                         'date' => $date->format('M j'),
                         'day' => $date->format('D'),
@@ -1284,7 +1320,9 @@ class OperationsController extends Controller
                         'time_out' => $record->time_out ? Carbon::parse($record->time_out)->format('H:i') : '-',
                         'tardiness_minutes' => $record->tardiness_minutes,
                         'undertime_minutes' => $record->undertime_minutes,
-                        'status' => ucfirst($record->status),
+                        'schedule_status' => $record->schedule_status,
+                        'schedule_notes' => $record->schedule_notes,
+                        'status' => $statusLabel,
                     ];
                 }
 

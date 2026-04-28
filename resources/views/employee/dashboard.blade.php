@@ -59,10 +59,23 @@
                 </div>
                 <div class="space-y-3">
                     @forelse ($recentAlerts as $alert)
-                        <div class="rounded-2xl border border-slate-200 bg-slate-50 px-5 py-4">
-                            <p class="text-sm font-semibold">{{ $alert->announcement?->title ?? 'System Notification' }}</p>
+                        @php
+                            $announcement = $alert->announcement;
+                            $priorityLabel = $announcement?->priority_label ?? 'Medium';
+                            $priorityBadgeClass = $announcement?->priority_badge_class ?? 'bg-blue-100 text-blue-700';
+                        @endphp
+                        <a href="{{ route('employee.notifications.open', $alert) }}" class="block rounded-2xl border border-slate-200 bg-slate-50 px-5 py-4 transition hover:border-slate-300 hover:bg-slate-100">
+                            <div class="mb-2 flex items-start justify-between gap-2">
+                                <p class="text-sm font-semibold">{{ $alert->title_text }}</p>
+                                <div class="flex items-center gap-2">
+                                    <span class="rounded-full px-2 py-0.5 text-xs font-semibold {{ $priorityBadgeClass }}">{{ $priorityLabel }}</span>
+                                    @if ($announcement?->is_expired)
+                                        <span class="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-700">Expired</span>
+                                    @endif
+                                </div>
+                            </div>
                             <p class="text-xs text-slate-500">{{ $alert->created_at->format('M d, h:i A') }}</p>
-                        </div>
+                        </a>
                     @empty
                         <div class="rounded-2xl border border-slate-200 bg-slate-50 px-5 py-4">
                             <p class="text-sm font-semibold">No recent alerts</p>

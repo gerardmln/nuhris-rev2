@@ -35,7 +35,7 @@
         <tr><td class="label">Employee:</td><td>{{ $employee?->full_name ?? 'N/A' }}</td></tr>
         <tr><td class="label">Department:</td><td>{{ $employee?->department?->name ?? 'Unassigned' }}</td></tr>
         <tr><td class="label">Period:</td><td>{{ $period_label }}</td></tr>
-        <tr><td class="label">Official Time:</td><td>{{ $official_time }}</td></tr>
+        <tr><td class="label">Approved Schedule:</td><td>{{ $schedule_summary }}</td></tr>
     </table>
 
     <table style="width:100%; margin-bottom: 15px;">

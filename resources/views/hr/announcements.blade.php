@@ -34,9 +34,16 @@
                 <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                     <div>
                         <h2 class="text-3xl font-bold text-[#1f2b5d]">Announcements</h2>
-                        <p class="text-sm text-slate-500">Manage HR announcements and notifications</p>
+                        <p class="text-sm text-slate-500">Create and manage official HR announcements</p>
                     </div>
-                    <button data-open-modal="new-announcement-modal" class="rounded-lg bg-[#00386f] px-4 py-2 text-sm font-semibold text-white hover:bg-[#002f5d]">+ New Announcement</button>
+                    <div class="flex flex-wrap gap-2">
+                        <form method="POST" action="{{ route('announcements.clear-all') }}" onsubmit="return confirm('Clear all announcements? This will permanently remove them and their notifications.');">
+                            @csrf
+                            @method('DELETE')
+                            <button type="submit" class="rounded-lg border border-red-300 bg-white px-4 py-2 text-sm font-semibold text-red-700 hover:bg-red-50">Clear All</button>
+                        </form>
+                        <button data-open-modal="new-announcement-modal" class="rounded-lg bg-[#00386f] px-4 py-2 text-sm font-semibold text-white hover:bg-[#002f5d]">+ New Announcement</button>
+                    </div>
                 </div>
 
                 <div class="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
@@ -75,11 +82,6 @@
                     </form>
                 </article>
 
-                <div class="flex flex-wrap gap-2">
-                    <span class="rounded-md bg-blue-50 px-3 py-1 text-xs font-semibold text-blue-700">Announcements</span>
-                    <span class="rounded-md bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700">Sent Notifications</span>
-                </div>
-
                 <div class="space-y-4">
                     @forelse ($announcements as $announcement)
                         <article class="rounded-xl border border-slate-300 bg-white p-4 shadow-sm">
@@ -101,6 +103,12 @@
                             </div>
                             <h3 class="text-xl font-bold text-slate-800">{{ $announcement->title }}</h3>
                             <p class="mt-2 text-sm text-slate-600">{{ $announcement->content }}</p>
+                            <div class="mt-3 flex flex-wrap items-center gap-2">
+                                <span class="rounded-full px-3 py-1 text-xs font-semibold {{ $announcement->priority_badge_class }}">{{ $announcement->priority_label }}</span>
+                                @if ($announcement->is_expired)
+                                    <span class="rounded-full bg-amber-100 px-3 py-1 text-xs font-semibold text-amber-700">Expired</span>
+                                @endif
+                            </div>
                             <div class="mt-3 flex flex-wrap gap-4 text-xs text-slate-500">
                                 <span>{{ $announcement->published_at?->format('M d, Y') ?? $announcement->created_at->format('M d, Y') }}</span>
                                 @if ($announcement->expires_at)
@@ -204,20 +212,9 @@
                         </div>
                     </div>
 
-                    <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                        <div>
-                            <label class="mb-1 block text-lg font-semibold text-[#1f2b8b]">Publish Date</label>
-                            <input name="published_at" type="date" class="w-full rounded-md border border-slate-300 px-3 py-2.5 text-lg focus:border-blue-400 focus:outline-none">
-                        </div>
-                        <div>
-                            <label class="mb-1 block text-lg font-semibold text-[#1f2b8b]">Expiry Date</label>
-                            <input name="expires_at" type="date" class="w-full rounded-md border border-slate-300 px-3 py-2.5 text-lg focus:border-blue-400 focus:outline-none">
-                        </div>
-                    </div>
-
-                    <div class="flex items-center justify-between rounded-lg bg-slate-50 px-4 py-2">
-                        <label for="publish-now-new" class="text-xl font-semibold text-[#1f2b8b]">Publish immediately</label>
-                        <input id="publish-now-new" name="is_published" type="checkbox" checked value="1" class="h-5 w-10 cursor-pointer accent-[#1f2b8b]">
+                    <div>
+                        <label class="mb-1 block text-lg font-semibold text-[#1f2b8b]">Expiry Date</label>
+                        <input name="expires_at" type="date" class="w-full rounded-md border border-slate-300 px-3 py-2.5 text-lg focus:border-blue-400 focus:outline-none" required>
                     </div>
                 </div>
 

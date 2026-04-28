@@ -10,7 +10,9 @@ use App\Models\AnnouncementNotification;
 use App\Models\Department;
 use App\Models\Employee;
 use App\Models\EmployeeCredential;
+use App\Models\EmployeeScheduleSubmission;
 use App\Models\User;
+use App\Services\EmployeeScheduleService;
 use App\Services\SupabaseStorageService;
 use Illuminate\Http\Request;
 use Illuminate\Http\RedirectResponse;
@@ -19,17 +21,25 @@ use Illuminate\View\View;
 
 class PortalController extends Controller
 {
+    private const ALLOWED_TERM_LABELS = [
+        '1st Term',
+        '2nd Term',
+        '3rd Term',
+    ];
+
     public function dashboard(Request $request): View
     {
         $user = $request->user();
         $employee = Employee::query()->with('department')->where('email', $user->email)->first();
 
         $notificationsCount = AnnouncementNotification::query()
+            ->visible()
             ->where('user_id', $user->id)
             ->where('is_read', false)
             ->count();
 
         $recentAlerts = AnnouncementNotification::query()
+            ->visible()
             ->with('announcement')
             ->where('user_id', $user->id)
             ->latest()
@@ -196,6 +206,7 @@ class PortalController extends Controller
                 'user_id' => $userId,
                 'is_read' => false,
                 'read_at' => null,
+                'redirect_url' => route('credentials.index'),
                 'created_at' => now(),
                 'updated_at' => now(),
             ])->all();
@@ -208,45 +219,135 @@ class PortalController extends Controller
         return redirect()->route('employee.credentials')->with('success', 'Credential uploaded successfully. It is now pending HR review.');
     }
 
-    public function attendance(Request $request): View
+    public function attendance(Request $request, EmployeeScheduleService $scheduleService): View
     {
         $employee = Employee::query()->where('email', $request->user()->email)->first();
         $records = $employee
             ? $employee->attendanceRecords()->orderByDesc('record_date')->get()
             : collect();
+        $currentSchedule = $employee ? $scheduleService->currentSubmission($employee) : null;
+        $canEditSchedule = ! ($currentSchedule && in_array($currentSchedule->status, [EmployeeScheduleSubmission::STATUS_PENDING, EmployeeScheduleSubmission::STATUS_APPROVED], true));
 
         $totals = [
             'tardiness' => $records->sum('tardiness_minutes'),
             'undertime' => $records->sum('undertime_minutes'),
             'overtime' => $records->sum('overtime_minutes'),
-            'absences' => $records->where('status', 'absent')->count(),
-            'workload_credits' => $records->where('status', 'present')->count(),
+            'absences' => $records->filter(fn ($record) => $record->status === 'absent' && ! in_array($record->schedule_status, ['non_working_day', 'no_schedule'], true))->count(),
+            'workload_credits' => $records->filter(fn ($record) => $record->status === 'present' && $record->schedule_status === 'validated')->count(),
         ];
 
+        $overallResult = $this->buildAttendanceResult($totals, $currentSchedule, $records->isNotEmpty());
+
         $mappedRecords = $records->map(function ($record) {
+            $statusLabel = match ($record->schedule_status) {
+                'no_schedule' => 'No schedule available',
+                'non_working_day' => 'Non-working day',
+                default => ucfirst(str_replace('_', ' ', $record->status)),
+            };
+
             return [
                 'date' => $record->record_date?->format('M d, Y') ?? '-',
                 'time_in' => $record->time_in?->format('h:i A'),
                 'time_out' => $record->time_out?->format('h:i A'),
-                'scheduled' => ($record->scheduled_time_in?->format('h:i A') ?? '08:30 AM').' - '.($record->scheduled_time_out?->format('h:i A') ?? '05:30 PM'),
+                'scheduled' => $record->schedule_status === 'validated'
+                    ? (($record->scheduled_time_in?->format('h:i A') ?? 'N/A').' - '.($record->scheduled_time_out?->format('h:i A') ?? 'N/A'))
+                    : ucfirst(str_replace('_', ' ', (string) $record->schedule_status)),
                 'tardiness_minutes' => $record->tardiness_minutes,
                 'undertime_minutes' => $record->undertime_minutes,
                 'overtime_minutes' => $record->overtime_minutes,
-                'status' => ucfirst(str_replace('_', ' ', $record->status)),
+                'schedule_status' => $record->schedule_status,
+                'schedule_notes' => $record->schedule_notes,
+                'status' => $statusLabel,
             ];
         });
 
-        $periods = $records
-            ->map(fn ($record) => optional($record->record_date)->format('F Y'))
-            ->filter()
-            ->unique()
-            ->values();
+        $scheduleDays = $currentSchedule?->days->keyBy('day_name') ?? collect();
 
         return view('employee.attendance', [
             'records' => $mappedRecords,
             'totals' => $totals,
-            'periods' => $periods->isNotEmpty() ? $periods : collect([now()->format('F Y')]),
+            'scheduleDays' => $scheduleService->weeklyDays(),
+            'currentSchedule' => $currentSchedule,
+            'scheduleDayMap' => $scheduleDays,
+            'canEditSchedule' => $canEditSchedule,
+            'overallResult' => $overallResult,
         ]);
+    }
+
+    public function storeSchedule(Request $request, EmployeeScheduleService $scheduleService): RedirectResponse
+    {
+        $employee = Employee::query()->where('email', $request->user()->email)->firstOrFail();
+        $existingSchedule = $scheduleService->currentSubmission($employee);
+
+        if ($existingSchedule && in_array($existingSchedule->status, [EmployeeScheduleSubmission::STATUS_PENDING, EmployeeScheduleSubmission::STATUS_APPROVED], true)) {
+            return back()->with('error', 'You already have an active schedule submission. Please wait for HR review or request a reset before submitting again.');
+        }
+
+        $rules = [];
+        foreach ($scheduleService->weeklyDays() as $day) {
+            $rules["days.{$day['key']}.mode"] = ['required', 'in:with_work,no_work'];
+            $rules["days.{$day['key']}.time_in"] = ['nullable', 'date_format:H:i'];
+            $rules["days.{$day['key']}.time_out"] = ['nullable', 'date_format:H:i'];
+        }
+
+        $rules['term_label'] = ['required', 'string', 'in:'.implode(',', self::ALLOWED_TERM_LABELS)];
+
+        $validated = $request->validate($rules);
+        $scheduleRows = $scheduleService->normalizeWeeklyInput($validated['days'] ?? []);
+
+        DB::transaction(function () use ($employee, $request, $scheduleRows, $validated, $existingSchedule): void {
+            $submission = EmployeeScheduleSubmission::query()->firstOrNew([
+                'employee_id' => $employee->id,
+                'semester_label' => $validated['term_label'],
+            ]);
+
+            $submission->fill([
+                'term_label' => $validated['term_label'],
+                'submitted_by' => $request->user()->id,
+                'submitted_at' => now(),
+                'academic_year' => null,
+                'status' => EmployeeScheduleSubmission::STATUS_PENDING,
+                'reviewed_by' => null,
+                'reviewed_at' => null,
+                'review_notes' => null,
+                'is_current' => false,
+            ]);
+            $submission->save();
+
+            $submission->days()->delete();
+
+            foreach ($scheduleRows as $row) {
+                $submission->days()->create($row);
+            }
+
+            $announcement = Announcement::forceCreate([
+                'title' => sprintf('%s submitted a weekly schedule', $employee->full_name),
+                'content' => sprintf('%s submitted a weekly schedule for term "%s" and is waiting for HR approval.', $employee->full_name, $validated['term_label']),
+                'priority' => 'medium',
+                'target_employee_type' => 'hr',
+                'published_at' => now(),
+                'is_published' => true,
+                'created_by' => $request->user()->id,
+            ]);
+
+            $hrUserIds = User::query()->where('user_type', User::TYPE_HR)->pluck('id');
+
+            $rows = $hrUserIds->map(fn ($userId) => [
+                'announcement_id' => $announcement->id,
+                'user_id' => $userId,
+                'is_read' => false,
+                'read_at' => null,
+                'redirect_url' => route('schedules.index'),
+                'created_at' => now(),
+                'updated_at' => now(),
+            ])->all();
+
+            if ($rows) {
+                AnnouncementNotification::insert($rows);
+            }
+        });
+
+        return back()->with('success', 'Your weekly schedule was submitted to HR for approval.');
     }
 
     public function leave(Request $request): View
@@ -344,5 +445,46 @@ class PortalController extends Controller
         ])->save();
 
         return redirect()->route('employee.account')->with('password_success', 'Password changed successfully.');
+    }
+
+    private function buildAttendanceResult(array $totals, ?EmployeeScheduleSubmission $currentSchedule, bool $hasRecords): array
+    {
+        if (! $hasRecords) {
+            return [
+                'label' => 'No DTR yet',
+                'description' => 'Attendance records have not been uploaded yet.',
+                'variant' => 'neutral',
+            ];
+        }
+
+        if ($currentSchedule && $currentSchedule->status === EmployeeScheduleSubmission::STATUS_PENDING) {
+            return [
+                'label' => 'For approval',
+                'description' => 'Your schedule is waiting for HR approval.',
+                'variant' => 'warning',
+            ];
+        }
+
+        if (($totals['absences'] ?? 0) > 0) {
+            return [
+                'label' => 'Needs attention',
+                'description' => 'Your DTR has absences that need review.',
+                'variant' => 'danger',
+            ];
+        }
+
+        if (($totals['tardiness'] ?? 0) > 0 || ($totals['undertime'] ?? 0) > 0) {
+            return [
+                'label' => 'With deductions',
+                'description' => 'Your DTR has tardiness or undertime entries.',
+                'variant' => 'warning',
+            ];
+        }
+
+        return [
+            'label' => 'Good standing',
+            'description' => 'Your DTR is clear based on the current records.',
+            'variant' => 'success',
+        ];
     }
 }

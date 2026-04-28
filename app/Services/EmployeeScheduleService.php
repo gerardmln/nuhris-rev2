@@ -1,0 +1,215 @@
+<?php
+
+namespace App\Services;
+
+use App\Models\Employee;
+use App\Models\EmployeeScheduleDay;
+use App\Models\EmployeeScheduleSubmission;
+use Carbon\Carbon;
+
+class EmployeeScheduleService
+{
+    /**
+     * @return array<int, array{index:int,key:string,label:string}>
+     */
+    public function weeklyDays(): array
+    {
+        return [
+            ['index' => 1, 'key' => 'monday', 'label' => 'Monday'],
+            ['index' => 2, 'key' => 'tuesday', 'label' => 'Tuesday'],
+            ['index' => 3, 'key' => 'wednesday', 'label' => 'Wednesday'],
+            ['index' => 4, 'key' => 'thursday', 'label' => 'Thursday'],
+            ['index' => 5, 'key' => 'friday', 'label' => 'Friday'],
+            ['index' => 6, 'key' => 'saturday', 'label' => 'Saturday'],
+        ];
+    }
+
+    public function currentSubmission(Employee $employee): ?EmployeeScheduleSubmission
+    {
+        return EmployeeScheduleSubmission::query()
+            ->with('days')
+            ->where('employee_id', $employee->id)
+            ->latest('submitted_at')
+            ->first();
+    }
+
+    public function approvedSubmissionForDate(Employee $employee, Carbon $date): ?EmployeeScheduleSubmission
+    {
+        return EmployeeScheduleSubmission::query()
+            ->with('days')
+            ->where('employee_id', $employee->id)
+            ->where('status', EmployeeScheduleSubmission::STATUS_APPROVED)
+            ->latest('submitted_at')
+            ->first();
+    }
+
+    /**
+     * @param  array<string, array<string, string|null>>  $days
+     * @return array<int, array<string, mixed>>
+     */
+    public function normalizeWeeklyInput(array $days): array
+    {
+        $normalized = [];
+
+        foreach ($this->weeklyDays() as $day) {
+            $dayInput = $days[$day['key']] ?? [];
+            $mode = (string) ($dayInput['mode'] ?? 'no_work');
+            $hasWork = $mode === 'with_work';
+
+            $normalized[] = [
+                'day_name' => $day['label'],
+                'day_index' => $day['index'],
+                'has_work' => $hasWork,
+                'time_in' => $hasWork ? $this->normalizeTimeInput($dayInput['time_in'] ?? null) : null,
+                'time_out' => $hasWork ? $this->normalizeTimeInput($dayInput['time_out'] ?? null) : null,
+            ];
+        }
+
+        return $normalized;
+    }
+
+    /**
+     * @return array{schedule_status:string, schedule_notes:?string, scheduled_time_in:?string, scheduled_time_out:?string, tardiness_minutes:int, undertime_minutes:int, overtime_minutes:int, status:string}
+     */
+    public function evaluateDailyRecord(Employee $employee, Carbon $date, ?string $timeIn, ?string $timeOut): array
+    {
+        $submission = $this->approvedSubmissionForDate($employee, $date);
+
+        if (! $submission) {
+            return [
+                'schedule_status' => 'no_schedule',
+                'schedule_notes' => 'No schedule available',
+                'scheduled_time_in' => null,
+                'scheduled_time_out' => null,
+                'tardiness_minutes' => 0,
+                'undertime_minutes' => 0,
+                'overtime_minutes' => 0,
+                'status' => 'absent',
+            ];
+        }
+
+        $day = $submission->days->firstWhere('day_index', (int) $date->dayOfWeekIso);
+
+        if (! $day) {
+            return [
+                'schedule_status' => 'no_schedule',
+                'schedule_notes' => 'No schedule available',
+                'scheduled_time_in' => null,
+                'scheduled_time_out' => null,
+                'tardiness_minutes' => 0,
+                'undertime_minutes' => 0,
+                'overtime_minutes' => 0,
+                'status' => 'absent',
+            ];
+        }
+
+        if (! $day->has_work) {
+            return [
+                'schedule_status' => 'non_working_day',
+                'schedule_notes' => 'Non-working day',
+                'scheduled_time_in' => null,
+                'scheduled_time_out' => null,
+                'tardiness_minutes' => 0,
+                'undertime_minutes' => 0,
+                'overtime_minutes' => 0,
+                'status' => $timeIn || $timeOut ? 'present' : 'absent',
+            ];
+        }
+
+        $scheduledIn = $this->parseTime($day->time_in);
+        $scheduledOut = $this->parseTime($day->time_out);
+        $actualIn = $this->parseTime($timeIn);
+        $actualOut = $this->parseTime($timeOut);
+
+        $tardiness = 0;
+        $undertime = 0;
+        $overtime = 0;
+
+        if ($actualIn && $scheduledIn && $actualIn->gt($scheduledIn)) {
+            $tardiness = $scheduledIn->diffInMinutes($actualIn);
+        }
+
+        if ($actualOut && $scheduledOut) {
+            if ($actualOut->lt($scheduledOut)) {
+                $undertime = $actualOut->diffInMinutes($scheduledOut);
+            } elseif ($actualOut->gt($scheduledOut)) {
+                $overtime = $scheduledOut->diffInMinutes($actualOut);
+            }
+        }
+
+        return [
+            'schedule_status' => 'validated',
+            'schedule_notes' => null,
+            'scheduled_time_in' => $scheduledIn?->format('H:i:s'),
+            'scheduled_time_out' => $scheduledOut?->format('H:i:s'),
+            'tardiness_minutes' => $tardiness,
+            'undertime_minutes' => $undertime,
+            'overtime_minutes' => $overtime,
+            'status' => $actualIn ? 'present' : 'absent',
+        ];
+    }
+
+    public function mapDaysByIndex(iterable $days): array
+    {
+        $mapped = [];
+
+        foreach ($days as $day) {
+            $mapped[(int) $day->day_index] = $day;
+        }
+
+        return $mapped;
+    }
+
+    public function summarizeSubmission(?EmployeeScheduleSubmission $submission): string
+    {
+        if (! $submission) {
+            return 'No approved schedule available';
+        }
+
+        $parts = [];
+
+        $termLabel = $submission->term_label ?: $submission->semester_label;
+
+        if ($termLabel) {
+            $parts[] = 'Term: '.$termLabel;
+        }
+
+        foreach ($submission->days as $day) {
+            $parts[] = $day->day_name.': '.($day->has_work
+                ? (($day->time_in?->format('h:i A') ?? 'N/A').' - '.($day->time_out?->format('h:i A') ?? 'N/A'))
+                : 'No Work');
+        }
+
+        return implode(' | ', $parts);
+    }
+
+    private function normalizeTimeInput(mixed $value): ?string
+    {
+        $value = trim((string) $value);
+
+        if ($value === '') {
+            return null;
+        }
+
+        return $this->parseTime($value)?->format('H:i:s');
+    }
+
+    private function parseTime(mixed $value): ?Carbon
+    {
+        $value = trim((string) $value);
+
+        if ($value === '') {
+            return null;
+        }
+
+        try {
+            return Carbon::createFromFormat('H:i', substr($value, 0, 5));
+        } catch (\Throwable) {
+            try {
+                return Carbon::parse($value);
+            } catch (\Throwable) {
+                return null;
+            }
+        }
+    }
+}

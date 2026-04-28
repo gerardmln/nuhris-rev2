@@ -131,18 +131,6 @@
     </div>
 
     <div>
-        <label for="official_time_in" class="mb-1 block text-sm font-semibold text-slate-700">Official Time In</label>
-        <input id="official_time_in" name="official_time_in" type="time" value="{{ old('official_time_in', isset($employee->official_time_in) ? $employee->official_time_in?->format('H:i') : '') }}" class="w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-blue-400 focus:outline-none">
-        @error('official_time_in')<p class="mt-1 text-xs text-red-600">{{ $message }}</p>@enderror
-    </div>
-
-    <div>
-        <label for="official_time_out" class="mb-1 block text-sm font-semibold text-slate-700">Official Time Out</label>
-        <input id="official_time_out" name="official_time_out" type="time" value="{{ old('official_time_out', isset($employee->official_time_out) ? $employee->official_time_out?->format('H:i') : '') }}" class="w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-blue-400 focus:outline-none">
-        @error('official_time_out')<p class="mt-1 text-xs text-red-600">{{ $message }}</p>@enderror
-    </div>
-
-    <div>
         <label for="resume_last_updated_at" class="mb-1 block text-sm font-semibold text-slate-700">Resume Last Updated</label>
         <input id="resume_last_updated_at" name="resume_last_updated_at" type="date" value="{{ old('resume_last_updated_at', isset($employee->resume_last_updated_at) ? $employee->resume_last_updated_at?->format('Y-m-d') : '') }}" class="w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-blue-400 focus:outline-none">
         @error('resume_last_updated_at')<p class="mt-1 text-xs text-red-600">{{ $message }}</p>@enderror

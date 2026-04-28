@@ -21,6 +21,10 @@ class DashboardController extends Controller
         $announcements = Announcement::where('is_published', true)
             ->whereDate('published_at', '<=', now())
             ->where(function ($query) {
+                $query->whereNull('target_employee_type')
+                    ->orWhereIn('target_employee_type', ['faculty', 'admin_support']);
+            })
+            ->where(function ($query) {
                 $query->whereNull('expires_at')
                     ->orWhereDate('expires_at', '>=', now());
             })

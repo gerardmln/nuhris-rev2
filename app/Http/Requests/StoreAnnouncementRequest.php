@@ -51,9 +51,7 @@ class StoreAnnouncementRequest extends FormRequest
             'target_office' => ['nullable', Rule::in($allowedPositions)],
             'target_department_id' => ['nullable', Rule::in($facultyDepartmentIds)],
             'target_ranking' => ['nullable', Rule::in($allowedRankings)],
-            'published_at' => ['nullable', 'date'],
-            'expires_at' => ['nullable', 'date', 'after_or_equal:published_at'],
-            'is_published' => ['nullable', 'boolean'],
+            'expires_at' => ['required', 'date'],
         ];
     }
 

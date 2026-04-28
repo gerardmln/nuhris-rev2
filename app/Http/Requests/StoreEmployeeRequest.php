@@ -62,8 +62,6 @@ class StoreEmployeeRequest extends FormRequest
             ],
             'status' => ['nullable', 'in:active'],
             'hire_date' => ['nullable', 'date'],
-            'official_time_in' => ['nullable', 'date_format:H:i'],
-            'official_time_out' => ['nullable', 'date_format:H:i'],
             'resume_last_updated_at' => ['nullable', 'date'],
         ];
     }

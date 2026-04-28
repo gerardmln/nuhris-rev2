@@ -63,4 +63,8 @@ return [
         'SACE - School of Architecture, Computing and Engineering',
         'SHS - Senior High School',
     ],
+
+    'attendance' => [
+        'no_work_day_behavior' => 'ignore',
+    ],
 ];

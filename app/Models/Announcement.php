@@ -31,10 +31,20 @@ class Announcement extends Model
     {
         return [
             'published_at' => 'datetime',
-            'expires_at' => 'date',
+            'expires_at' => 'datetime',
             'is_published' => 'boolean',
             'target_department_id' => 'integer',
         ];
+    }
+
+    public function scopeVisible($query)
+    {
+        return $query->where('is_published', true)
+            ->where(function ($q) {
+                $q->whereNull('published_at')
+                    ->orWhere('published_at', '<=', now());
+            })
+            ->whereNull('deleted_at');
     }
 
     public function creator(): BelongsTo
@@ -73,5 +83,25 @@ class Announcement extends Model
         }
 
         return $segments ? implode(' · ', array_values(array_unique($segments))) : 'Everyone';
+    }
+
+    public function getPriorityBadgeClassAttribute(): string
+    {
+        return match ($this->priority) {
+            'low' => 'bg-emerald-100 text-emerald-700',
+            'medium' => 'bg-blue-100 text-blue-700',
+            'high' => 'bg-red-100 text-red-700',
+            default => 'bg-slate-100 text-slate-700',
+        };
+    }
+
+    public function getPriorityLabelAttribute(): string
+    {
+        return ucfirst($this->priority ?? 'medium');
+    }
+
+    public function getIsExpiredAttribute(): bool
+    {
+        return $this->expires_at && $this->expires_at <= now();
     }
 }
