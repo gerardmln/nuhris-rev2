@@ -24,51 +24,51 @@
 
     <article class="rounded-2xl border border-slate-300 bg-white p-6 shadow-sm">
         <h2 class="text-3xl font-bold text-slate-900">Profile Information</h2>
-        <form class="mt-5 grid grid-cols-1 gap-4 lg:grid-cols-3 js-loading-form" method="POST" action="{{ route('employee.account.update') }}">
+        <div class="mt-5 grid grid-cols-1 gap-4 lg:grid-cols-2">
+            <div class="rounded-2xl border border-slate-200 bg-slate-50 p-4 lg:col-span-2">
+                <h3 class="text-sm font-semibold uppercase tracking-wide text-slate-500">Read Only Details</h3>
+                <div class="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+                    <div>
+                        <p class="text-xs font-semibold uppercase tracking-wide text-slate-500">Department</p>
+                        <p class="mt-1 text-sm font-semibold text-slate-900">{{ $employee?->department?->name ?? '—' }}</p>
+                    </div>
+                    <div>
+                        <p class="text-xs font-semibold uppercase tracking-wide text-slate-500">Position</p>
+                        <p class="mt-1 text-sm font-semibold text-slate-900">{{ $employee?->position ?? '—' }}</p>
+                    </div>
+                    <div>
+                        <p class="text-xs font-semibold uppercase tracking-wide text-slate-500">Employee Type</p>
+                        <p class="mt-1 text-sm font-semibold text-slate-900">{{ $employee?->employment_type ?? '—' }}</p>
+                    </div>
+                    <div>
+                        <p class="text-xs font-semibold uppercase tracking-wide text-slate-500">Employee ID</p>
+                        <p class="mt-1 text-sm font-semibold text-slate-900">{{ $employee?->employee_id ?? '—' }}</p>
+                    </div>
+                    <div>
+                        <p class="text-xs font-semibold uppercase tracking-wide text-slate-500">Date Hired</p>
+                        <p class="mt-1 text-sm font-semibold text-slate-900">{{ optional($employee?->hire_date)->format('M d, Y') ?? '—' }}</p>
+                    </div>
+                </div>
+            </div>
+
+            <form class="grid grid-cols-1 gap-4 lg:grid-cols-2 lg:col-span-2 js-loading-form" method="POST" action="{{ route('employee.account.update') }}">
             @csrf
-            <input type="hidden" name="name" value="{{ auth()->user()->name }}">
-            <div>
-                <label class="mb-2 block text-sm font-semibold text-slate-700">Employee Type</label>
-                <select name="employee_type" class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm">
-                    <option value="">Select type</option>
-                    @foreach ($employeeTypes as $type)
-                        <option value="{{ $type }}" @selected($employee && str_contains(strtolower($employee->employment_type ?? ''), strtolower($type)))>{{ $type }}</option>
-                    @endforeach
-                </select>
-            </div>
-            <div>
-                <label class="mb-2 block text-sm font-semibold text-slate-700">Employee ID</label>
-                <input name="employee_id" type="text" class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" value="{{ $employee->employee_id ?? '' }}" placeholder="e.g., NU-2025-001">
-            </div>
-            <div>
-                <label class="mb-2 block text-sm font-semibold text-slate-700">Department</label>
-                <select name="department_id" class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm">
-                    <option value="">Select department</option>
-                    @foreach ($departments as $department)
-                        <option value="{{ $department->id }}" @selected(($employee->department_id ?? null) === $department->id)>{{ $department->name }}</option>
-                    @endforeach
-                </select>
-            </div>
             <div>
                 <label class="mb-2 block text-sm font-semibold text-slate-700">Phone</label>
-                <input name="phone" type="text" class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" value="{{ $employee->phone ?? '' }}" placeholder="e.g., 09171234567">
-            </div>
-            <div>
-                <label class="mb-2 block text-sm font-semibold text-slate-700">Position</label>
-                <input name="position" type="text" class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" value="{{ $employee->position ?? '' }}" placeholder="e.g., Instructor I">
-            </div>
-            <div>
-                <label class="mb-2 block text-sm font-semibold text-slate-700">Date Hired</label>
-                <input name="hire_date" type="date" class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" value="{{ optional($employee?->hire_date)->format('Y-m-d') }}">
+                <div class="flex overflow-hidden rounded-lg border border-slate-300 bg-white text-sm focus-within:border-blue-400">
+                    <span class="inline-flex items-center border-r border-slate-300 bg-slate-50 px-3 font-semibold text-slate-600">+63</span>
+                    <input name="phone" type="text" class="w-full px-3 py-2 outline-none" value="{{ $phoneValue ?? '' }}" placeholder="9123456789">
+                </div>
             </div>
             <div>
                 <label class="mb-2 block text-sm font-semibold text-slate-700">Address</label>
                 <input name="address" type="text" class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" value="{{ $employee->address ?? '' }}" placeholder="Home address">
             </div>
-            <div class="lg:col-span-3">
+            <div class="lg:col-span-2">
                 <button type="submit" class="float-right rounded-xl bg-[#003a78] px-6 py-2 text-sm font-semibold text-white hover:bg-[#002f61]">Save Changes</button>
             </div>
-        </form>
+            </form>
+        </div>
     </article>
 
     {{-- Change Password Section --}}

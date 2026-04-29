@@ -30,11 +30,19 @@
                         <h2 class="text-3xl font-bold text-[#1f2b5d]">Notifications</h2>
                         <p class="text-sm text-slate-500">All caught up!</p>
                     </div>
-                    <form method="POST" action="{{ route('notifications.clear-all') }}" onsubmit="return confirm('Clear all notifications? This will remove them from your inbox.');">
-                        @csrf
-                        @method('DELETE')
-                        <button type="submit" class="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50">Clear All</button>
-                    </form>
+                    <div class="flex flex-wrap gap-2">
+                        @if ($notifications->where('is_read', false)->isNotEmpty())
+                            <form method="POST" action="{{ route('notifications.read-all') }}">
+                                @csrf
+                                <button type="submit" class="rounded-lg border border-blue-300 bg-white px-4 py-2 text-sm font-semibold text-blue-700 hover:bg-blue-50">Read All</button>
+                            </form>
+                        @endif
+                        <form method="POST" action="{{ route('notifications.clear-all') }}" onsubmit="return confirm('Clear all notifications? This will remove them from your inbox.');">
+                            @csrf
+                            @method('DELETE')
+                            <button type="submit" class="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50">Clear All</button>
+                        </form>
+                    </div>
                 </div>
 
                 <article class="rounded-xl border border-slate-300 bg-white shadow-sm">

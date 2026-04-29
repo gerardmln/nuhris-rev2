@@ -94,7 +94,7 @@
                             @csrf
                             <input type="hidden" name="confirmed" value="1">
                             <input type="text" name="review_notes" placeholder="Reason for decline" class="rounded-md border border-slate-300 px-3 py-2 text-sm" required>
-                            <button type="submit" class="rounded-md bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-700">Decline</button>
+                            <button type="submit" class="rounded-md bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-700 shadow-sm ring-1 ring-red-200">Decline</button>
                         </form>
                     @elseif ($submission && $submission->status === 'approved')
                         <form method="POST" action="{{ route('schedules.clear', $submission) }}" onsubmit="return confirm('Clear this approved schedule? The employee will need to resubmit.');">

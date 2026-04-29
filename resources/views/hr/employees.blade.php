@@ -137,7 +137,6 @@
                                 <th class="px-5 py-3">Employee</th>
                                 <th class="px-4 py-3">Department</th>
                                 <th class="px-4 py-3">Position</th>
-                                <th class="px-4 py-3">Resume</th>
                                 <th class="px-4 py-3">Actions</th>
                             </tr>
                         </thead>
@@ -157,13 +156,6 @@
                                     </td>
                                     <td class="px-4 py-4 text-slate-700">{{ $employee->department?->name }}</td>
                                     <td class="px-4 py-4 text-slate-700">{{ $employee->position }}</td>
-                                    <td class="px-4 py-4">
-                                        @if ($employee->resume_last_updated_at)
-                                            <span class="rounded border border-emerald-200 bg-emerald-50 px-2 py-1 text-xs font-semibold text-emerald-700">Updated</span>
-                                        @else
-                                            <span class="rounded border border-red-200 bg-red-50 px-2 py-1 text-xs font-semibold text-red-700">Needs Update</span>
-                                        @endif
-                                    </td>
                                     <td class="px-4 py-4 text-slate-600">
                                         <div
                                             x-data="{
@@ -256,7 +248,6 @@
                                                         data-employee-ranking="{{ $employee->ranking }}"
                                                         data-employee-status="{{ $employee->status }}"
                                                         data-employee-hire-date="{{ $employee->hire_date?->format('Y-m-d') }}"
-                                                        data-employee-resume-last-updated="{{ $employee->resume_last_updated_at?->format('Y-m-d') }}"
                                                         @click="open = false"
                                                         class="mb-1 block rounded-lg border border-slate-300 px-3 py-2 text-center text-sm font-semibold text-slate-800 hover:bg-slate-50">View Details</a>
                                                     <a href="#"
@@ -276,7 +267,6 @@
                                                         data-employee-ranking="{{ $employee->ranking }}"
                                                         data-employee-status="{{ $employee->status }}"
                                                         data-employee-hire-date="{{ $employee->hire_date?->format('Y-m-d') }}"
-                                                        data-employee-resume-last-updated="{{ $employee->resume_last_updated_at?->format('Y-m-d') }}"
                                                         @click="open = false"
                                                         class="mb-1 block rounded-lg border border-slate-300 px-3 py-2 text-center text-sm font-semibold text-slate-800 hover:bg-slate-50">Edit</a>
                                                     <a href="{{ route('employees.profile') }}" @click="open = false" class="mb-1 block rounded-lg border border-slate-300 px-3 py-2 text-center text-sm font-semibold text-slate-800 hover:bg-slate-50">View Profile</a>
@@ -411,10 +401,6 @@
                     <label class="mb-1 block text-sm font-semibold text-[#1f2b8b]">Hire Date</label>
                     <input name="hire_date" type="date" class="w-full rounded-md border border-slate-300 px-4 py-2 text-lg">
                 </div>
-                <div>
-                    <label class="mb-1 block text-sm font-semibold text-[#1f2b8b]">Resume Last Updated</label>
-                    <input name="resume_last_updated_at" type="date" class="w-full rounded-md border border-slate-300 px-4 py-2 text-lg">
-                </div>
 
                 <div class="md:col-span-2 rounded-md border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-800">
                     <p class="font-semibold">Login account will be auto-created</p>
@@ -524,10 +510,6 @@
                     <label class="mb-1 block text-sm font-semibold text-[#1f2b8b]">Hire Date</label>
                     <input name="hire_date" type="date" class="w-full rounded-md border border-slate-300 px-4 py-2 text-lg">
                 </div>
-                <div>
-                    <label class="mb-1 block text-sm font-semibold text-[#1f2b8b]">Resume Last Updated</label>
-                    <input name="resume_last_updated_at" type="date" class="w-full rounded-md border border-slate-300 px-4 py-2 text-lg">
-                </div>
 
                 <div class="md:col-span-2 rounded-md border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-800">
                     <p class="font-semibold">Login account will be auto-created</p>
@@ -599,10 +581,6 @@
                 <div>
                     <p class="text-base text-slate-500">Status</p>
                     <p id="details-status" class="text-2xl">Active</p>
-                </div>
-                <div>
-                    <p class="text-base text-slate-500">Resume Last Updated</p>
-                    <p id="details-resume-last-updated" class="text-2xl">N/A</p>
                 </div>
             </div>
         </div>
@@ -685,10 +663,6 @@
                     <label class="mb-1 block text-sm font-semibold text-[#1f2b8b]">Hire Date</label>
                     <input id="edit-hire-date" name="hire_date" type="date" value="2021-06-15" class="w-full rounded-md border border-slate-300 px-4 py-2 text-lg">
                 </div>
-                <div>
-                    <label class="mb-1 block text-sm font-semibold text-[#1f2b8b]">Resume Last Updated</label>
-                    <input id="edit-resume-last-updated" name="resume_last_updated_at" type="date" class="w-full rounded-md border border-slate-300 px-4 py-2 text-lg">
-                </div>
 
                 <div class="md:col-span-2 rounded-md border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-800">
                     <p class="font-semibold">Password will stay as-is</p>
@@ -722,8 +696,6 @@
         const detailsHireDate = document.getElementById('details-hire-date');
         const detailsOfficialTime = document.getElementById('details-official-time');
         const detailsStatus = document.getElementById('details-status');
-        const detailsResumeLastUpdated = document.getElementById('details-resume-last-updated');
-
         const editEmployeeId = document.getElementById('edit-employee-id');
         const editEmail = document.getElementById('edit-email');
         const editFirstName = document.getElementById('edit-first-name');
@@ -737,7 +709,6 @@
         const editHireDate = document.getElementById('edit-hire-date');
         const editOfficialTimeIn = document.getElementById('edit-official-time-in');
         const editOfficialTimeOut = document.getElementById('edit-official-time-out');
-        const editResumeLastUpdated = document.getElementById('edit-resume-last-updated');
 
         function formatDateForDetails(dateValue) {
             if (!dateValue) return 'N/A';
@@ -764,7 +735,6 @@
             const hireDate = trigger.dataset.employeeHireDate || '';
             const officialTimeIn = trigger.dataset.employeeOfficialTimeIn || '';
             const officialTimeOut = trigger.dataset.employeeOfficialTimeOut || '';
-            const resumeLastUpdated = trigger.dataset.employeeResumeLastUpdated || '';
 
             const initials = `${(firstName[0] || '').toUpperCase()}${(lastName[0] || '').toUpperCase()}`;
 
@@ -785,8 +755,6 @@
                     : 'N/A';
             }
             if (detailsStatus) detailsStatus.textContent = status ? status.replaceAll('_', ' ').replace(/\b\w/g, (char) => char.toUpperCase()) : 'N/A';
-            if (detailsResumeLastUpdated) detailsResumeLastUpdated.textContent = formatDateForDetails(resumeLastUpdated);
-
             if (employeeEditForm && employeeId) {
                 employeeEditForm.action = `/hr/employees/${employeeId}`;
             }
@@ -809,8 +777,6 @@
             if (editHireDate) editHireDate.value = hireDate;
             if (editOfficialTimeIn) editOfficialTimeIn.value = officialTimeIn;
             if (editOfficialTimeOut) editOfficialTimeOut.value = officialTimeOut;
-            if (editResumeLastUpdated) editResumeLastUpdated.value = resumeLastUpdated;
-
             if (editPosition) {
                 editPosition.dispatchEvent(new Event('change', { bubbles: true }));
             }

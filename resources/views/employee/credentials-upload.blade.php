@@ -14,7 +14,7 @@
     @endif
 
     <article class="rounded-2xl border border-slate-300 bg-white p-6 shadow-sm">
-        <h2 class="text-3xl font-bold text-slate-900">Profile Information</h2>
+        <h2 class="text-3xl font-bold text-slate-900">Credential Information</h2>
 
         <form id="credential-upload-form"
               class="mt-5 grid grid-cols-1 gap-4 lg:grid-cols-3"
@@ -34,43 +34,33 @@
                     <option value="degrees" @selected(old('credential_type') === 'degrees')>Academic Degree</option>
                     <option value="ranking" @selected(old('credential_type') === 'ranking')>Ranking File</option>
                 </select>
+                <p id="credential-type-note" class="mt-1 hidden text-xs text-blue-700"></p>
                 @error('credential_type')
                     <p class="mt-1 text-xs text-red-600">{{ $message }}</p>
                 @enderror
             </div>
 
-            <div>
+            <div id="credential-title-field">
                 <label class="mb-2 block text-sm font-semibold text-slate-700">Title</label>
-                <input name="title" type="text" value="{{ old('title') }}" class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" placeholder="e.g., PRC License 2025" required data-testid="credential-title-input">
+                <input id="credential-title-input" name="title" type="text" value="{{ old('title') }}" class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" placeholder="Enter credential title" data-testid="credential-title-input">
                 @error('title')
                     <p class="mt-1 text-xs text-red-600">{{ $message }}</p>
                 @enderror
             </div>
 
-            <div>
-                <label class="mb-2 block text-sm font-semibold text-slate-700">Department</label>
-                <select name="department_id" class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" data-testid="credential-department-input">
-                    <option value="">Select department</option>
-                    @foreach ($departments as $department)
-                        <option value="{{ $department->id }}"
-                            @selected(old('department_id') ? old('department_id') == $department->id : ($employee && $employee->department && $employee->department->id === $department->id))
-                        >{{ $department->name }}</option>
-                    @endforeach
-                </select>
-            </div>
-
-            <div>
+            <div id="credential-expires-field">
                 <label class="mb-2 block text-sm font-semibold text-slate-700">Expiration Date</label>
-                <input name="expires_at" type="date" value="{{ old('expires_at') }}" class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" data-testid="credential-expires-input">
+                <input id="credential-expires-input" name="expires_at" type="date" value="{{ old('expires_at') }}" class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" data-testid="credential-expires-input">
+                <p id="credential-expires-help" class="mt-1 text-xs text-slate-500">Required for PRC License only.</p>
             </div>
 
-            <div>
-                <label class="mb-2 block text-sm font-semibold text-slate-700">Description</label>
-                <input name="description" type="text" value="{{ old('description') }}" class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" placeholder="Additional details" data-testid="credential-description-input">
+            <div id="credential-notes-field">
+                <label class="mb-2 block text-sm font-semibold text-slate-700">Notes / Details</label>
+                <input name="description" type="text" value="{{ old('description') }}" class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" placeholder="Optional notes or additional details" data-testid="credential-description-input">
             </div>
 
             {{-- File Upload with preview + loading --}}
-            <div>
+            <div id="credential-file-field">
                 <label class="mb-2 block text-sm font-semibold text-slate-700">File Upload</label>
 
                 {{-- Dropzone + hidden input --}}
@@ -128,6 +118,7 @@
             </div>
 
             <div class="lg:col-span-3">
+                <p id="credential-submit-helper" class="float-left mt-2 text-xs text-slate-500">Select a credential type to continue.</p>
                 <button type="submit"
                         id="credential-submit-btn"
                         class="float-right inline-flex items-center gap-2 rounded-xl bg-[#003a78] px-6 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-[#002f61] disabled:cursor-not-allowed disabled:opacity-80"
@@ -173,9 +164,27 @@
             const fileClear = document.getElementById('file-clear');
             const clientErr = document.getElementById('file-client-error');
             const submitBtn = document.getElementById('credential-submit-btn');
+            const submitHelper = document.getElementById('credential-submit-helper');
             const submitSpinner = document.getElementById('credential-submit-spinner');
             const submitLabel = document.getElementById('credential-submit-label');
             const overlay = document.getElementById('credential-upload-overlay');
+            const typeInput = document.querySelector('[name="credential_type"]');
+            const typeNote = document.getElementById('credential-type-note');
+            const titleField = document.getElementById('credential-title-field');
+            const titleInput = document.getElementById('credential-title-input');
+            const expiresField = document.getElementById('credential-expires-field');
+            const expiresInput = document.getElementById('credential-expires-input');
+            const expiresHelp = document.getElementById('credential-expires-help');
+            const notesField = document.getElementById('credential-notes-field');
+            const fileField = document.getElementById('credential-file-field');
+
+            const credentialRules = {
+                resume: { showTitle: false, requireTitle: false, showExpires: false, requireExpires: false, expiresHelp: 'Expiration date is automatically set to one year from the upload date for Resume uploads.' },
+                prc: { showTitle: false, requireTitle: false, showExpires: true, requireExpires: true, expiresHelp: 'Expiration date is required for PRC License.' },
+                seminars: { showTitle: true, requireTitle: true, showExpires: false, requireExpires: false, expiresHelp: '' },
+                degrees: { showTitle: true, requireTitle: true, showExpires: false, requireExpires: false, expiresHelp: '' },
+                ranking: { showTitle: false, requireTitle: false, showExpires: false, requireExpires: false, expiresHelp: '' },
+            };
 
             const show = (el) => { if (!el) return; el.classList.remove('hidden'); el.classList.add('flex'); };
             const hide = (el) => { if (!el) return; el.classList.add('hidden'); el.classList.remove('flex'); };
@@ -208,6 +217,70 @@
                 clearClientError();
                 setState('idle');
             };
+
+            const updateCredentialFields = () => {
+                const selectedType = typeInput?.value || '';
+                const rules = credentialRules[selectedType] || { showTitle: false, requireTitle: false, showExpires: false, requireExpires: false, expiresHelp: '' };
+                const hasCredentialType = selectedType !== '';
+
+                if (notesField) {
+                    notesField.classList.toggle('hidden', !hasCredentialType);
+                }
+
+                if (fileField) {
+                    fileField.classList.toggle('hidden', !hasCredentialType);
+                }
+
+                if (!hasCredentialType) {
+                    resetFile();
+                }
+
+                if (submitBtn) {
+                    submitBtn.disabled = !hasCredentialType;
+                }
+                if (submitHelper) {
+                    submitHelper.classList.toggle('hidden', hasCredentialType);
+                }
+
+                if (typeNote) {
+                    if (selectedType === 'resume') {
+                        typeNote.textContent = 'Resume must be re-uploaded one year from the upload date.';
+                        typeNote.classList.remove('hidden');
+                    } else {
+                        typeNote.textContent = '';
+                        typeNote.classList.add('hidden');
+                    }
+                }
+
+                if (titleField) {
+                    titleField.classList.toggle('hidden', !rules.showTitle);
+                }
+                if (titleInput) {
+                    titleInput.required = !!rules.requireTitle;
+                    if (!rules.showTitle) {
+                        titleInput.value = '';
+                    }
+                }
+
+                if (expiresField) {
+                    expiresField.classList.toggle('hidden', !rules.showExpires);
+                }
+                if (expiresInput) {
+                    expiresInput.required = !!rules.requireExpires;
+                    if (!rules.showExpires) {
+                        expiresInput.value = '';
+                    }
+                }
+                if (expiresHelp) {
+                    expiresHelp.textContent = rules.expiresHelp;
+                    expiresHelp.classList.toggle('hidden', !rules.expiresHelp);
+                }
+            };
+
+            if (typeInput) {
+                typeInput.addEventListener('change', updateCredentialFields);
+            }
+            updateCredentialFields();
 
             fileInput.addEventListener('change', () => {
                 clearClientError();

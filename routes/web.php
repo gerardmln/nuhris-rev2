@@ -3,11 +3,13 @@
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\Admin\PortalController as AdminPortalController;
 use App\Http\Controllers\Employee\PortalController as EmployeePortalController;
+use App\Http\Controllers\Employee\WfhMonitoringController as EmployeeWfhMonitoringController;
 use App\Http\Controllers\Hr\AnnouncementController;
 use App\Http\Controllers\Hr\DashboardController;
 use App\Http\Controllers\Hr\EmployeeController;
 use App\Http\Controllers\Hr\OperationsController;
 use App\Http\Controllers\Hr\ScheduleManagementController;
+use App\Http\Controllers\Hr\WfhMonitoringController as HrWfhMonitoringController;
 use App\Models\AnnouncementNotification;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -58,6 +60,12 @@ Route::prefix('hr')->middleware(['auth', 'user.type:2'])->group(function () {
     Route::get('/timekeeping/daily-time-record/export-pdf', [OperationsController::class, 'exportDtrPdf'])->name('timekeeping.dtr.export-pdf');
 
     Route::get('/timekeeping/daily-time-record/export-excel', [OperationsController::class, 'exportDtrExcel'])->name('timekeeping.dtr.export-excel');
+
+    Route::get('/wfh-monitoring', [HrWfhMonitoringController::class, 'index'])->name('wfh-monitoring.index');
+    Route::delete('/wfh-monitoring/clear-all', [HrWfhMonitoringController::class, 'clearAll'])->name('wfh-monitoring.clear-all');
+    Route::get('/wfh-monitoring/{submission}/view', [HrWfhMonitoringController::class, 'viewFile'])->whereNumber('submission')->name('wfh-monitoring.view');
+    Route::post('/wfh-monitoring/{submission}/approve', [HrWfhMonitoringController::class, 'approve'])->whereNumber('submission')->name('wfh-monitoring.approve');
+    Route::post('/wfh-monitoring/{submission}/decline', [HrWfhMonitoringController::class, 'decline'])->whereNumber('submission')->name('wfh-monitoring.decline');
 
     Route::get('/schedule-management', [ScheduleManagementController::class, 'index'])->name('schedules.index');
     Route::post('/schedule-management/{submission}/approve', [ScheduleManagementController::class, 'approve'])->whereNumber('submission')->name('schedules.approve');
@@ -112,6 +120,19 @@ Route::prefix('hr')->middleware(['auth', 'user.type:2'])->group(function () {
         return redirect()->route('notifications.index')->with('success', $deleted > 0 ? 'All notifications were cleared.' : 'No notifications to clear.');
     })->name('notifications.clear-all');
 
+    Route::post('/notifications/read-all', function (Request $request) {
+        $updated = AnnouncementNotification::query()
+            ->visible()
+            ->where('user_id', $request->user()?->id)
+            ->where('is_read', false)
+            ->update([
+                'is_read' => true,
+                'read_at' => now(),
+            ]);
+
+        return redirect()->route('notifications.index')->with('success', $updated > 0 ? 'All notifications were marked as read.' : 'No unread notifications to mark as read.');
+    })->name('notifications.read-all');
+
     Route::get('/notifications/{notification}/open', function (Request $request, AnnouncementNotification $notification) {
         abort_unless($notification->user_id === $request->user()?->id, 403);
 
@@ -140,8 +161,21 @@ Route::prefix('employee')->name('employee.')->middleware(['auth', 'user.type:3']
 
     Route::post('/credentials/upload', [EmployeePortalController::class, 'storeCredential'])->name('credentials.upload.store');
 
+    Route::get('/credentials/{credential}/view', [EmployeePortalController::class, 'viewCredentialFile'])
+        ->whereNumber('credential')
+        ->name('credentials.view');
+
+    Route::delete('/credentials/{credential}', [EmployeePortalController::class, 'destroyCredential'])
+        ->whereNumber('credential')
+        ->name('credentials.destroy');
+
     Route::get('/attendance-dtr', [EmployeePortalController::class, 'attendance'])->name('attendance');
     Route::post('/attendance-dtr/schedule', [EmployeePortalController::class, 'storeSchedule'])->name('attendance.schedule.store');
+
+    Route::get('/wfh-monitoring', [EmployeeWfhMonitoringController::class, 'index'])->name('wfh-monitoring.index');
+    Route::get('/wfh-monitoring/upload', [EmployeeWfhMonitoringController::class, 'create'])->name('wfh-monitoring.upload');
+    Route::post('/wfh-monitoring/upload', [EmployeeWfhMonitoringController::class, 'store'])->name('wfh-monitoring.store');
+    Route::get('/wfh-monitoring/{submission}/view', [EmployeeWfhMonitoringController::class, 'viewFile'])->whereNumber('submission')->name('wfh-monitoring.view');
 
     Route::get('/leave-monitoring', [EmployeePortalController::class, 'leave'])->name('leave');
 
@@ -165,6 +199,19 @@ Route::prefix('employee')->name('employee.')->middleware(['auth', 'user.type:3']
 
         return redirect()->route('employee.notifications')->with('success', $deleted > 0 ? 'All notifications were cleared.' : 'No notifications to clear.');
     })->name('notifications.clear-all');
+
+    Route::post('/notifications/read-all', function (Request $request) {
+        $updated = AnnouncementNotification::query()
+            ->visible()
+            ->where('user_id', $request->user()?->id)
+            ->where('is_read', false)
+            ->update([
+                'is_read' => true,
+                'read_at' => now(),
+            ]);
+
+        return redirect()->route('employee.notifications')->with('success', $updated > 0 ? 'All notifications were marked as read.' : 'No unread notifications to mark as read.');
+    })->name('notifications.read-all');
 
     Route::get('/notifications/{notification}/open', function (Request $request, AnnouncementNotification $notification) {
         abort_unless($notification->user_id === $request->user()?->id, 403);

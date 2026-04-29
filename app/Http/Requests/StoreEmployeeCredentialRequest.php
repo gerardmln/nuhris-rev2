@@ -21,11 +21,14 @@ class StoreEmployeeCredentialRequest extends FormRequest
      */
     public function rules(): array
     {
+        $credentialType = (string) $this->input('credential_type', '');
+        $requiresTitle = in_array($credentialType, ['seminars', 'degrees'], true);
+        $requiresExpirationDate = $credentialType === 'prc';
+
         return [
             'credential_type' => ['required', 'in:resume,prc,seminars,degrees,ranking'],
-            'title' => ['required', 'string', 'max:255'],
-            'department_id' => ['nullable', 'exists:departments,id'],
-            'expires_at' => ['nullable', 'date'],
+            'title' => [$requiresTitle ? 'required' : 'nullable', 'string', 'max:255'],
+            'expires_at' => [$requiresExpirationDate ? 'required' : 'nullable', 'date'],
             'description' => ['nullable', 'string', 'max:1000'],
             'credential_file' => ['nullable', 'file', 'max:10240', 'mimes:pdf,jpg,jpeg,png,doc,docx'],
         ];

@@ -38,9 +38,11 @@
                     <tr>
                         <th class="px-4 py-3">Type</th>
                         <th class="px-4 py-3">Title</th>
+                        <th class="px-4 py-3">Expiration</th>
                         <th class="px-4 py-3">Status</th>
                         <th class="px-4 py-3">HR Notes</th>
                         <th class="px-4 py-3">Last Updated</th>
+                        <th class="px-4 py-3">File</th>
                     </tr>
                 </thead>
                 <tbody class="divide-y divide-slate-200">
@@ -52,14 +54,22 @@
                                 'rejected' => 'bg-red-100 text-red-800',
                                 default => 'bg-slate-100 text-slate-700',
                             };
+                            $hasFile = filled($credential['has_file']);
                         @endphp
-                        <tr>
+                        <tr data-credential-type="{{ $credential['type'] }}">
                             <td class="px-4 py-3">{{ $credential['label'] }}</td>
                             <td class="px-4 py-3">{{ $credential['title'] }}</td>
+                            <td class="px-4 py-3 text-slate-600">{{ $credential['expires_at'] ?? '—' }}</td>
                             <td class="px-4 py-3">
                                 <span class="rounded-full {{ $statusStyles }} px-2.5 py-0.5 text-xs font-semibold">
                                     {{ $credential['status_raw'] === 'verified' ? 'Approved' : $credential['status'] }}
                                 </span>
+                                @if (!empty($credential['is_expired']))
+                                    <span class="ml-2 rounded-full bg-rose-100 px-2.5 py-0.5 text-xs font-semibold text-rose-800">Expired</span>
+                                @endif
+                                @if (!empty($credential['is_expiring_soon']))
+                                    <span class="ml-2 rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-semibold text-amber-800">Expiring Soon</span>
+                                @endif
                             </td>
                             <td class="px-4 py-3 text-slate-600">
                                 @if ($credential['review_notes'])
@@ -69,8 +79,41 @@
                                 @endif
                             </td>
                             <td class="px-4 py-3">{{ optional($credential['updated_at'])->format('M d, Y') }}</td>
+                            <td class="px-4 py-3">
+                                <div class="flex flex-wrap items-center gap-2">
+                                    @if ($hasFile)
+                                        <a href="{{ route('employee.credentials.view', $credential['id']) }}"
+                                           target="_blank"
+                                           rel="noopener"
+                                           class="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-[11px] font-semibold text-slate-700 transition hover:bg-slate-50"
+                                           data-testid="employee-credential-view-{{ $credential['id'] }}">
+                                            <svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/><path stroke-linecap="round" stroke-linejoin="round" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/></svg>
+                                            View file
+                                        </a>
+                                    @endif
+
+                                    <form method="POST"
+                                          action="{{ route('employee.credentials.destroy', $credential['id']) }}"
+                                          onsubmit="return confirm('Delete this credential? This action cannot be undone.');"
+                                          data-testid="employee-credential-delete-form-{{ $credential['id'] }}">
+                                        @csrf
+                                        @method('DELETE')
+                                        <button type="submit"
+                                                class="inline-flex items-center gap-1.5 rounded-lg border border-rose-300 bg-rose-50 px-3 py-1.5 text-[11px] font-semibold text-rose-700 transition hover:bg-rose-100"
+                                                data-testid="employee-credential-delete-{{ $credential['id'] }}">
+                                            <svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3m-4 0h14"/></svg>
+                                            Delete
+                                        </button>
+                                    </form>
+                                </div>
+                            </td>
                         </tr>
                     @endforeach
+                    <tr id="credentials-no-results" class="hidden">
+                        <td colspan="7" class="px-4 py-8 text-center text-slate-500">
+                            No credentials match the selected filter.
+                        </td>
+                    </tr>
                 </tbody>
             </table>
         </article>
@@ -82,6 +125,8 @@
         (() => {
             const buttons = document.querySelectorAll('.cred-filter');
             const emptyText = document.getElementById('credentials-empty');
+            const rows = document.querySelectorAll('tbody tr[data-credential-type]');
+            const noResultsRow = document.getElementById('credentials-no-results');
 
             const labels = {
                 all: 'No credentials found. Upload your first credential above',
@@ -98,6 +143,25 @@
                     button.classList.toggle('bg-[#d9d9db]', active);
                     button.setAttribute('aria-pressed', active ? 'true' : 'false');
                 });
+
+                if (rows.length > 0) {
+                    let visibleCount = 0;
+
+                    rows.forEach((row) => {
+                        const rowType = row.dataset.credentialType;
+                        const matches = filter === 'all' || rowType === filter;
+
+                        row.classList.toggle('hidden', !matches);
+
+                        if (matches) {
+                            visibleCount += 1;
+                        }
+                    });
+
+                    if (noResultsRow) {
+                        noResultsRow.classList.toggle('hidden', visibleCount > 0);
+                    }
+                }
 
                 if (emptyText) {
                     emptyText.textContent = labels[filter] ?? labels.all;

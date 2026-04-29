@@ -6,7 +6,9 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Database\Eloquent\SoftDeletes;
+use Illuminate\Support\Carbon;
 
 class Employee extends Model
 {
@@ -82,9 +84,22 @@ class Employee extends Model
         return $this->hasMany(EmployeeCredential::class);
     }
 
+    public function latestResumeCredential(): HasOne
+    {
+        return $this->hasOne(EmployeeCredential::class)
+            ->where('credential_type', 'resume')
+            ->where('status', 'verified')
+            ->latestOfMany('updated_at');
+    }
+
     public function attendanceRecords(): HasMany
     {
         return $this->hasMany(AttendanceRecord::class);
+    }
+
+    public function wfhMonitoringSubmissions(): HasMany
+    {
+        return $this->hasMany(WfhMonitoringSubmission::class);
     }
 
     public function leaveBalances(): HasMany
@@ -105,5 +120,44 @@ class Employee extends Model
     public function approvedScheduleSubmission(): HasMany
     {
         return $this->hasMany(EmployeeScheduleSubmission::class)->where('status', EmployeeScheduleSubmission::STATUS_APPROVED);
+    }
+
+    public function resumeExpiresAt(): ?Carbon
+    {
+        return $this->latestResumeCredential?->expires_at;
+    }
+
+    public function isResumeExpiringSoon(?Carbon $referenceDate = null): bool
+    {
+        $expiresAt = $this->resumeExpiresAt();
+
+        if (! $expiresAt) {
+            return false;
+        }
+
+        $referenceDate ??= now();
+
+        return $expiresAt->betweenIncluded(
+            $referenceDate->copy()->startOfDay(),
+            $referenceDate->copy()->addDays(30)->endOfDay()
+        );
+    }
+
+    public function isResumeExpired(?Carbon $referenceDate = null): bool
+    {
+        $expiresAt = $this->resumeExpiresAt();
+
+        if (! $expiresAt) {
+            return false;
+        }
+
+        $referenceDate ??= now();
+
+        return $expiresAt->lt($referenceDate->copy()->startOfDay());
+    }
+
+    public function latestResumeUpdatedAt(): ?Carbon
+    {
+        return $this->latestResumeCredential?->updated_at?->copy();
     }
 }

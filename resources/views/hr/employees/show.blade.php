@@ -28,7 +28,19 @@
                 <div><p class="text-xs text-slate-500">Ranking</p><p class="font-semibold">{{ $employee->ranking ?? 'N/A' }}</p></div>
                 <div><p class="text-xs text-slate-500">Status</p><p class="font-semibold">{{ str_replace('_', ' ', ucfirst($employee->status)) }}</p></div>
                 <div><p class="text-xs text-slate-500">Hire Date</p><p class="font-semibold">{{ $employee->hire_date?->format('M d, Y') ?? 'N/A' }}</p></div>
-                <div><p class="text-xs text-slate-500">Resume Last Updated</p><p class="font-semibold">{{ $employee->resume_last_updated_at?->format('M d, Y') ?? 'N/A' }}</p></div>
+                @php
+                    $resumeUpdatedAt = $employee->latestResumeUpdatedAt() ?? $employee->resume_last_updated_at;
+                    $resumeExpiresAt = $employee->resumeExpiresAt();
+                @endphp
+                <div>
+                    <p class="text-xs text-slate-500">Resume Last Updated</p>
+                    <p class="font-semibold">{{ $resumeUpdatedAt?->format('M d, Y') ?? 'N/A' }}</p>
+                    @if ($resumeUpdatedAt)
+                        <p class="mt-1 text-xs font-semibold {{ $employee->isResumeExpired() ? 'text-rose-700' : ($employee->isResumeExpiringSoon() ? 'text-amber-700' : 'text-emerald-700') }}">
+                            {{ $employee->isResumeExpired() ? 'Expired' : ($employee->isResumeExpiringSoon() ? 'Expiring Soon' : 'Valid') }}{{ $resumeExpiresAt ? ' · Expires '.$resumeExpiresAt->format('M d, Y') : '' }}
+                        </p>
+                    @endif
+                </div>
             </div>
         </div>
     </div>

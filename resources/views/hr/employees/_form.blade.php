@@ -129,12 +129,6 @@
         <input id="hire_date" name="hire_date" type="date" value="{{ old('hire_date', isset($employee->hire_date) ? $employee->hire_date?->format('Y-m-d') : '') }}" class="w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-blue-400 focus:outline-none">
         @error('hire_date')<p class="mt-1 text-xs text-red-600">{{ $message }}</p>@enderror
     </div>
-
-    <div>
-        <label for="resume_last_updated_at" class="mb-1 block text-sm font-semibold text-slate-700">Resume Last Updated</label>
-        <input id="resume_last_updated_at" name="resume_last_updated_at" type="date" value="{{ old('resume_last_updated_at', isset($employee->resume_last_updated_at) ? $employee->resume_last_updated_at?->format('Y-m-d') : '') }}" class="w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-blue-400 focus:outline-none">
-        @error('resume_last_updated_at')<p class="mt-1 text-xs text-red-600">{{ $message }}</p>@enderror
-    </div>
 </div>
 
 @unless ($isEdit)

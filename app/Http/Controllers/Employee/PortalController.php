@@ -46,16 +46,21 @@ class PortalController extends Controller
             ->limit(3)
             ->get();
 
-        $credentialsQuery = $employee ? EmployeeCredential::query()->where('employee_id', $employee->id) : EmployeeCredential::query()->whereRaw('1 = 0');
-        $activeCredentials = (clone $credentialsQuery)
-            ->where('status', 'verified')
-            ->where(function ($query) {
-                $query->whereNull('expires_at')->orWhereDate('expires_at', '>=', now()->toDateString());
-            })
-            ->count();
+        $credentials = $employee
+            ? EmployeeCredential::query()->where('employee_id', $employee->id)->get()
+            : collect();
 
-        $pendingCredentials = (clone $credentialsQuery)->where('status', 'pending')->count();
-        $totalCredentials = (clone $credentialsQuery)->count();
+        $verifiedCredentials = $credentials->where('status', 'verified')->values();
+        $expiringSoonCredentials = $verifiedCredentials->filter(fn (EmployeeCredential $credential) => $credential->isExpiringSoon())->values();
+        $compliantCredentials = $verifiedCredentials->filter(function (EmployeeCredential $credential) use ($expiringSoonCredentials) {
+            return ! $credential->isExpiringSoon() && (! $credential->expires_at || $credential->expires_at >= now()->startOfDay());
+        })->values();
+
+        $activeCredentials = $verifiedCredentials->count();
+        $pendingCredentials = $credentials->where('status', 'pending')->count();
+        $totalCredentials = $credentials->count();
+        $expiringSoonCount = $expiringSoonCredentials->count();
+        $compliantCount = $compliantCredentials->count();
 
         $calendarEvents = $recentAlerts
             ->map(fn (AnnouncementNotification $notification) => $notification->announcement?->title)
@@ -72,12 +77,12 @@ class PortalController extends Controller
                 'active_credentials' => $activeCredentials,
                 'pending_credentials' => $pendingCredentials,
                 'compliance_total' => max($totalCredentials, 1),
-                'compliance_passed' => $activeCredentials,
+                'compliance_passed' => $compliantCount + $expiringSoonCount,
                 'leave_balance' => $leaveBalance,
                 'notifications' => $notificationsCount,
-                'compliant' => $activeCredentials,
-                'expiring_soon' => $pendingCredentials,
-                'non_compliant' => max($totalCredentials - $activeCredentials - $pendingCredentials, 0),
+                'compliant' => $compliantCount,
+                'expiring_soon' => $expiringSoonCount,
+                'non_compliant' => max($totalCredentials - $compliantCount - $expiringSoonCount, 0),
             ],
             'recentAlerts' => $recentAlerts,
             'calendar' => [
@@ -97,7 +102,11 @@ class PortalController extends Controller
             : collect();
 
         $mapped = $credentials->map(function (EmployeeCredential $credential) {
+            $resumeYear = (int) ($credential->created_at?->year ?? now()->year);
+            $resumeAcademicYearTitle = sprintf('Resume A.Y. %d-%d', $resumeYear, $resumeYear + 1);
+
             return [
+                'id' => $credential->id,
                 'type' => $credential->credential_type,
                 'label' => match ($credential->credential_type) {
                     'resume' => 'Resume',
@@ -106,9 +115,21 @@ class PortalController extends Controller
                     'degrees' => 'Degrees',
                     default => 'Ranking',
                 },
-                'title' => $credential->title,
+                'title' => $credential->credential_type === 'resume'
+                    ? ((blank($credential->title) || $credential->title === 'Resume') ? $resumeAcademicYearTitle : $credential->title)
+                    : ($credential->title ?: match ($credential->credential_type) {
+                        'prc' => 'PRC License',
+                        'seminars' => 'Seminar / Training',
+                        'degrees' => 'Academic Degree',
+                        default => 'Ranking File',
+                    }),
                 'status' => ucfirst(str_replace('_', ' ', $credential->status)),
                 'status_raw' => $credential->status,
+                'is_expired' => $credential->isExpired(),
+                'is_expiring_soon' => $credential->status === 'verified' && $credential->isExpiringSoon(),
+                'expires_at' => $credential->effectiveExpiresAt()?->format('M d, Y'),
+                'has_file' => filled($credential->file_path),
+                'original_filename' => $credential->original_filename,
                 'review_notes' => $credential->review_notes,
                 'reviewed_at' => $credential->reviewed_at?->format('M d, Y'),
                 'updated_at' => $credential->updated_at,
@@ -136,14 +157,6 @@ class PortalController extends Controller
 
         return view('employee.credentials-upload', [
             'employee' => $employee,
-            'credentialTypes' => [
-                'Resume',
-                'PRC License',
-                'Seminar / Training',
-                'Academic Degree',
-                'Ranking File',
-            ],
-            'departments' => Department::query()->schools()->orderBy('name')->get(),
         ]);
     }
 
@@ -169,27 +182,60 @@ class PortalController extends Controller
             }
         }
 
-        DB::transaction(function () use ($request, $employee, $filePath, $originalFilename): void {
-            EmployeeCredential::create([
+        $credentialType = $request->string('credential_type')->toString();
+        $expiresAt = match ($credentialType) {
+            'resume' => now()->addYear()->toDateString(),
+            'prc' => $request->input('expires_at'),
+            default => null,
+        };
+        $credentialTypeLabel = match ($credentialType) {
+            'resume' => 'Resume',
+            'prc' => 'PRC License',
+            'seminars' => 'Seminar / Training',
+            'degrees' => 'Academic Degree',
+            default => 'Ranking File',
+        };
+        $submissionYear = (int) now()->year;
+        $resumeAcademicYearTitle = sprintf('Resume A.Y. %d-%d', $submissionYear, $submissionYear + 1);
+        $title = in_array($credentialType, ['seminars', 'degrees'], true)
+            ? trim($request->string('title')->toString())
+            : ($credentialType === 'resume' ? $resumeAcademicYearTitle : $credentialTypeLabel);
+
+        DB::transaction(function () use ($request, $employee, $filePath, $originalFilename, $credentialType, $credentialTypeLabel, $title, $expiresAt): void {
+            $credential = EmployeeCredential::create([
                 'employee_id' => $employee->id,
-                'credential_type' => $request->string('credential_type')->toString(),
-                'title' => $request->string('title')->toString(),
-                'department_id' => $request->input('department_id'),
-                'expires_at' => $request->input('expires_at'),
+                'credential_type' => $credentialType,
+                'title' => $title,
+                'department_id' => $employee->department_id,
+                'expires_at' => $expiresAt,
                 'description' => $request->input('description'),
                 'file_path' => $filePath,
                 'original_filename' => $originalFilename,
                 'status' => 'pending',
             ]);
 
-            $hrAnnouncement = Announcement::forceCreate([
-                'title' => 'New credential uploaded',
-                'content' => sprintf(
+            if ($credentialType === 'resume') {
+                $employee->forceFill([
+                    'resume_last_updated_at' => now()->toDateString(),
+                ])->save();
+            }
+
+            $announcementContent = $title
+                ? sprintf(
                     '%s uploaded a %s credential titled "%s" and it is awaiting HR review.',
                     $employee->full_name,
-                    $request->string('credential_type')->toString(),
-                    $request->string('title')->toString()
-                ),
+                    $credentialTypeLabel,
+                    $title
+                )
+                : sprintf(
+                    '%s uploaded a %s credential and it is awaiting HR review.',
+                    $employee->full_name,
+                    $credentialTypeLabel
+                );
+
+            $hrAnnouncement = Announcement::forceCreate([
+                'title' => 'New credential uploaded',
+                'content' => $announcementContent,
                 'priority' => 'medium',
                 'target_user_type' => User::TYPE_HR,
                 'published_at' => now(),
@@ -219,6 +265,58 @@ class PortalController extends Controller
         return redirect()->route('employee.credentials')->with('success', 'Credential uploaded successfully. It is now pending HR review.');
     }
 
+    public function viewCredentialFile(Request $request, EmployeeCredential $credential, SupabaseStorageService $storage): RedirectResponse
+    {
+        $employee = Employee::query()->where('email', $request->user()->email)->firstOrFail();
+
+        abort_unless($credential->employee_id === $employee->id, 403);
+
+        if (! $credential->file_path) {
+            return back()->with('error', 'No file was attached to this credential.');
+        }
+
+        $url = $storage->createSignedUrl($credential->file_path, 300);
+
+        if (! $url) {
+            return back()->with('error', 'Unable to generate a download link. Please try again.');
+        }
+
+        return redirect()->away($url);
+    }
+
+    public function destroyCredential(Request $request, EmployeeCredential $credential, SupabaseStorageService $storage): RedirectResponse
+    {
+        $employee = Employee::query()->where('email', $request->user()->email)->firstOrFail();
+
+        abort_unless($credential->employee_id === $employee->id, 403);
+
+        $credentialType = $credential->credential_type;
+        $filePath = $credential->file_path;
+
+        DB::transaction(function () use ($employee, $credential, $credentialType): void {
+            $credential->delete();
+
+            if ($credentialType === 'resume') {
+                $latestResume = EmployeeCredential::query()
+                    ->where('employee_id', $employee->id)
+                    ->where('credential_type', 'resume')
+                    ->where('status', 'verified')
+                    ->latest('updated_at')
+                    ->first();
+
+                $employee->forceFill([
+                    'resume_last_updated_at' => $latestResume?->updated_at?->toDateString(),
+                ])->save();
+            }
+        });
+
+        if ($filePath) {
+            $storage->delete($filePath);
+        }
+
+        return redirect()->route('employee.credentials')->with('success', 'Credential deleted successfully.');
+    }
+
     public function attendance(Request $request, EmployeeScheduleService $scheduleService): View
     {
         $employee = Employee::query()->where('email', $request->user()->email)->first();
@@ -238,20 +336,71 @@ class PortalController extends Controller
 
         $overallResult = $this->buildAttendanceResult($totals, $currentSchedule, $records->isNotEmpty());
 
-        $mappedRecords = $records->map(function ($record) {
+        $mappedRecords = $records->map(function ($record) use ($scheduleService, $employee) {
             $statusLabel = match ($record->schedule_status) {
                 'no_schedule' => 'No schedule available',
                 'non_working_day' => 'Non-working day',
                 default => ucfirst(str_replace('_', ' ', $record->status)),
             };
 
+            $scheduledIn = null;
+            $scheduledOut = null;
+
+            if ($record->scheduled_time_in && $record->scheduled_time_out) {
+                $scheduledIn = $record->scheduled_time_in?->format('h:i A');
+                $scheduledOut = $record->scheduled_time_out?->format('h:i A');
+            } else {
+                // Derive scheduled times from the employee's approved schedule for that date
+                try {
+                    $evaluation = $scheduleService->evaluateDailyRecord($employee, $record->record_date, $record->time_in?->format('H:i') ?? null, $record->time_out?->format('H:i') ?? null);
+                    if (! in_array($evaluation['schedule_status'], ['no_schedule', 'non_working_day'], true)) {
+                        if (! empty($evaluation['scheduled_time_in'])) {
+                            $scheduledIn = \Carbon\Carbon::createFromFormat('H:i:s', $evaluation['scheduled_time_in'])->format('h:i A');
+                        }
+                        if (! empty($evaluation['scheduled_time_out'])) {
+                            $scheduledOut = \Carbon\Carbon::createFromFormat('H:i:s', $evaluation['scheduled_time_out'])->format('h:i A');
+                        }
+                    }
+                } catch (\Throwable $e) {
+                    // fallback: leave scheduled times null
+                }
+            }
+
+            $scheduledLabel = ($scheduledIn || $scheduledOut)
+                ? (($scheduledIn ?? 'N/A').' - '.($scheduledOut ?? 'N/A'))
+                : ucfirst(str_replace('_', ' ', (string) $record->schedule_status));
+
+            // Format actual times (time columns may be strings or DateTime instances)
+            $formatTime = function ($value) {
+                if (! $value) {
+                    return null;
+                }
+
+                if (is_string($value)) {
+                    // Try common time formats
+                    try {
+                        return \Carbon\Carbon::createFromFormat('H:i:s', $value)->format('h:i A');
+                    } catch (\Throwable $e) {
+                        try {
+                            return \Carbon\Carbon::parse($value)->format('h:i A');
+                        } catch (\Throwable $_) {
+                            return (string) $value;
+                        }
+                    }
+                }
+
+                try {
+                    return $value->format('h:i A');
+                } catch (\Throwable $_) {
+                    return null;
+                }
+            };
+
             return [
                 'date' => $record->record_date?->format('M d, Y') ?? '-',
-                'time_in' => $record->time_in?->format('h:i A'),
-                'time_out' => $record->time_out?->format('h:i A'),
-                'scheduled' => $record->schedule_status === 'validated'
-                    ? (($record->scheduled_time_in?->format('h:i A') ?? 'N/A').' - '.($record->scheduled_time_out?->format('h:i A') ?? 'N/A'))
-                    : ucfirst(str_replace('_', ' ', (string) $record->schedule_status)),
+                'time_in' => $formatTime($record->time_in),
+                'time_out' => $formatTime($record->time_out),
+                'scheduled' => $scheduledLabel,
                 'tardiness_minutes' => $record->tardiness_minutes,
                 'undertime_minutes' => $record->undertime_minutes,
                 'overtime_minutes' => $record->overtime_minutes,
@@ -383,33 +532,26 @@ class PortalController extends Controller
     {
         $employee = Employee::query()->with('department')->where('email', $request->user()->email)->first();
 
+        $phoneValue = $employee?->phone;
+        $phoneValue = is_string($phoneValue) ? preg_replace('/^\+?63/', '', trim($phoneValue)) : null;
+        $phoneValue = is_string($phoneValue) ? ltrim($phoneValue, '0') : null;
+
         return view('employee.account', [
             'employee' => $employee,
             'departments' => Department::query()->schools()->orderBy('name')->get(),
-            'employeeTypes' => ['Faculty', 'Security', 'ASP'],
+            'employeeTypes' => ['Faculty', 'ASP'],
+            'phoneValue' => $phoneValue,
         ]);
     }
 
     public function updateAccount(UpdateEmployeeAccountRequest $request): RedirectResponse
     {
-        $user = $request->user();
-        $employee = Employee::query()->where('email', $user->email)->first();
-
-        $user->update([
-            'name' => $request->string('name')->toString(),
-        ]);
+        $employee = Employee::query()->where('email', $request->user()->email)->first();
 
         if ($employee) {
-            $departmentId = $request->input('department_id') ?: $employee->department_id;
-
             $employee->update([
-                'employee_id' => $request->input('employee_id') ?: $employee->employee_id,
-                'department_id' => $departmentId,
-                'phone' => $request->input('phone'),
-                'position' => $request->input('position'),
-                'hire_date' => $request->input('hire_date'),
+                'phone' => $this->normalizePhilippinePhone($request->input('phone')),
                 'address' => $request->input('address'),
-                'employment_type' => $request->input('employee_type') ?: $employee->employment_type,
             ]);
         }
 
@@ -486,5 +628,27 @@ class PortalController extends Controller
             'description' => 'Your DTR is clear based on the current records.',
             'variant' => 'success',
         ];
+    }
+
+    private function normalizePhilippinePhone(?string $phone): ?string
+    {
+        $phone = trim((string) $phone);
+
+        if ($phone === '') {
+            return null;
+        }
+
+        $phone = preg_replace('/[^0-9+]/', '', $phone) ?? '';
+        $phone = ltrim($phone, '+');
+
+        if (str_starts_with($phone, '63')) {
+            return '+'.$phone;
+        }
+
+        if (str_starts_with($phone, '0')) {
+            $phone = substr($phone, 1);
+        }
+
+        return '+63'.$phone;
     }
 }

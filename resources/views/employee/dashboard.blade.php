@@ -9,6 +9,13 @@
         <p class="text-sm text-slate-500">Here is an overview of your HR information.</p>
     </div>
 
+    @if ($stats['expiring_soon'] > 0)
+        <div class="rounded-2xl border border-amber-200 bg-amber-50 px-5 py-4 text-amber-900 shadow-sm">
+            <p class="text-sm font-semibold">You have {{ $stats['expiring_soon'] }} approved credential{{ $stats['expiring_soon'] > 1 ? 's' : '' }} expiring soon.</p>
+            <p class="mt-1 text-xs text-amber-800">Please visit your credentials list to review and re-upload the affected document(s) if needed.</p>
+        </div>
+    @endif
+
     <div class="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
         <article class="rounded-2xl border border-slate-300 bg-white p-5 shadow-sm">
             <p class="text-xs font-medium text-slate-500">Active Credentials</p>

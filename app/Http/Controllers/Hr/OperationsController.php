@@ -52,7 +52,9 @@ class OperationsController extends Controller
             ->with(['employee.department', 'reviewer'])
             ->latest('updated_at');
 
-        if (in_array($statusFilter, ['pending', 'verified', 'rejected'], true)) {
+        if ($statusFilter === 'expiring') {
+            $query->where('status', 'verified');
+        } elseif (in_array($statusFilter, ['pending', 'verified', 'rejected'], true)) {
             $query->where('status', $statusFilter);
         }
 
@@ -63,11 +65,12 @@ class OperationsController extends Controller
                 'employee_email' => $credential->employee?->email ?? '',
                 'department' => $credential->employee?->department?->name ?? 'Unassigned',
                 'type_label' => $credential->typeLabel(),
-                'title' => $credential->title,
+                'title' => $credential->title ?: $credential->typeLabel(),
                 'description' => $credential->description,
-                'expires_at' => $credential->expires_at?->format('M d, Y'),
+                'expires_at' => $credential->effectiveExpiresAt()?->format('M d, Y'),
                 'submitted_at' => $credential->created_at?->format('M d, Y h:i A'),
                 'status' => $credential->status,
+                'is_expiring_soon' => $credential->status === 'verified' && $credential->isExpiringSoon(),
                 'has_file' => ! empty($credential->file_path),
                 'original_filename' => $credential->original_filename,
                 'review_notes' => $credential->review_notes,
@@ -75,6 +78,12 @@ class OperationsController extends Controller
                 'reviewed_at' => $credential->reviewed_at?->format('M d, Y h:i A'),
             ];
         });
+
+        if ($statusFilter === 'expiring') {
+            $credentials = $credentials
+                ->filter(fn (array $credential) => ! empty($credential['is_expiring_soon']))
+                ->values();
+        }
 
         $counts = [
             'pending' => EmployeeCredential::query()->where('status', 'pending')->count(),
@@ -85,9 +94,8 @@ class OperationsController extends Controller
 
         $expiringSoon = EmployeeCredential::query()
             ->where('status', 'verified')
-            ->whereNotNull('expires_at')
-            ->whereDate('expires_at', '<=', now()->addDays(30))
-            ->whereDate('expires_at', '>=', now())
+            ->get()
+            ->filter(fn (EmployeeCredential $credential) => $credential->isExpiringSoon())
             ->count();
 
         return view('hr.credentials', [

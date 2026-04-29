@@ -69,7 +69,7 @@ class User extends Authenticatable
 
     public function unreadAnnouncementNotifications(): HasMany
     {
-        return $this->announcementNotifications()->where('is_read', false);
+        return $this->visibleAnnouncementNotifications()->where('is_read', false);
     }
 
     public function employeeProfile(): HasOne

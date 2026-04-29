@@ -56,8 +56,8 @@
                         <p class="mt-1 text-4xl font-extrabold">{{ $stats['active'] }}</p>
                     </article>
                     <article class="rounded-xl border border-slate-300 bg-white p-4 shadow-sm">
-                        <p class="text-xs font-medium text-slate-500">Urgent</p>
-                        <p class="mt-1 text-4xl font-extrabold">{{ $stats['urgent'] }}</p>
+                        <p class="text-xs font-medium text-slate-500">High</p>
+                        <p class="mt-1 text-4xl font-extrabold">{{ $stats['high'] }}</p>
                     </article>
                     <article class="rounded-xl border border-slate-300 bg-white p-4 shadow-sm">
                         <p class="text-xs font-medium text-slate-500">Current Month</p>
@@ -72,10 +72,10 @@
                         </div>
                         <div class="flex gap-2">
                             <select name="priority" class="w-full rounded-md border border-slate-300 px-2 py-2 text-sm focus:border-blue-400 focus:outline-none">
-                                <option value="">All Types</option>
-                                <option value="high" @selected($filters['priority'] === 'high')>Urgent</option>
-                                <option value="medium" @selected($filters['priority'] === 'medium')>General</option>
-                                <option value="low" @selected($filters['priority'] === 'low')>Reminder</option>
+                                <option value="">All Priorities</option>
+                                <option value="low" @selected($filters['priority'] === 'low')>Low</option>
+                                <option value="medium" @selected($filters['priority'] === 'medium')>Medium</option>
+                                <option value="high" @selected($filters['priority'] === 'high')>High</option>
                             </select>
                             <button type="submit" class="rounded-md bg-[#00386f] px-3 py-2 text-xs font-semibold text-white hover:bg-[#002f5d]">Filter</button>
                         </div>
@@ -250,13 +250,11 @@
 
                     <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
                         <div>
-                            <label class="mb-1 block text-lg font-semibold text-[#1f2b8b]">Type</label>
+                            <label class="mb-1 block text-lg font-semibold text-[#1f2b8b]">Priority</label>
                             <select class="w-full rounded-md border border-slate-300 px-3 py-2.5 text-lg focus:border-blue-400 focus:outline-none">
-                                <option>Urgent</option>
-                                <option>General</option>
-                                <option>Reminder</option>
-                                <option>Event</option>
-                                <option>Policy Update</option>
+                                <option value="low">Low</option>
+                                <option value="medium">Medium</option>
+                                <option value="high">High</option>
                             </select>
                         </div>
                         <div>

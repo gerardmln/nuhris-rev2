@@ -59,7 +59,6 @@ class UpdateEmployeeRequest extends FormRequest
             ],
             'status' => ['sometimes', 'in:active,on_leave,resigned,terminated'],
             'hire_date' => ['nullable', 'date'],
-            'resume_last_updated_at' => ['nullable', 'date'],
         ];
     }
 

@@ -27,7 +27,7 @@ class EmployeeController extends Controller
         $departmentId = $request->string('department_id')->toString();
 
         $employeesQuery = Employee::query()
-            ->with('department')
+            ->with(['department', 'latestResumeCredential'])
             ->when($search, function ($query, $searchTerm) {
                 $query->where(function ($nested) use ($searchTerm) {
                     $nested
@@ -124,7 +124,7 @@ class EmployeeController extends Controller
 
     public function show(Employee $employee): View
     {
-        $employee->load('department');
+        $employee->load(['department', 'latestResumeCredential']);
 
         return view('hr.employees.show', [
             'employee' => $employee,

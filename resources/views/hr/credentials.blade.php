@@ -19,11 +19,15 @@
     @endif
 
     {{-- Stats --}}
-    <div class="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+    <div class="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-5">
         <article class="rounded-xl border border-slate-300 bg-white p-4 shadow-sm">
             <p class="text-xs font-medium uppercase tracking-wide text-slate-500">Total Submissions</p>
             <p class="mt-1 text-3xl font-extrabold text-slate-900">{{ $stats['total'] }}</p>
         </article>
+        <a href="{{ route('credentials.index', ['status' => 'expiring']) }}" class="rounded-xl border border-amber-200 bg-amber-50 p-4 shadow-sm transition hover:bg-amber-100">
+            <p class="text-xs font-medium uppercase tracking-wide text-amber-700">All Expiring</p>
+            <p class="mt-1 text-3xl font-extrabold text-amber-900">{{ $stats['expiring_soon'] }}</p>
+        </a>
         <article class="rounded-xl border border-amber-200 bg-amber-50 p-4 shadow-sm">
             <p class="text-xs font-medium uppercase tracking-wide text-amber-700">Pending Review</p>
             <p class="mt-1 text-3xl font-extrabold text-amber-900">{{ $stats['pending'] }}</p>
@@ -43,6 +47,7 @@
         @php
             $tabs = [
                 ['key' => 'pending',  'label' => 'Pending',  'count' => $stats['pending']],
+                ['key' => 'expiring', 'label' => 'Expiring', 'count' => $stats['expiring_soon']],
                 ['key' => 'verified', 'label' => 'Approved', 'count' => $stats['verified']],
                 ['key' => 'rejected', 'label' => 'Rejected', 'count' => $stats['rejected']],
                 ['key' => 'all',      'label' => 'All',      'count' => $stats['total']],
@@ -81,6 +86,9 @@
                                     };
                                 @endphp
                                 <span class="rounded-full {{ $statusStyles }} px-2.5 py-0.5 text-xs font-semibold capitalize">{{ $credential['status'] === 'verified' ? 'Approved' : $credential['status'] }}</span>
+                                @if (!empty($credential['is_expiring_soon']))
+                                    <span class="rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-semibold text-amber-800">Expiring Soon</span>
+                                @endif
                             </div>
                             <p class="mt-1 text-sm text-slate-700">
                                 <span class="font-semibold">{{ $credential['employee_name'] }}</span>

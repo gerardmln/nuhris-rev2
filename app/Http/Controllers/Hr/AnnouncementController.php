@@ -34,7 +34,8 @@ class AnnouncementController extends Controller
             ->when($search, function ($query, $term) {
                 $query->where(function ($nested) use ($term) {
                     $nested->where('title', 'like', "%{$term}%")
-                        ->orWhere('content', 'like', "%{$term}%");
+                        ->orWhere('content', 'like', "%{$term}%")
+                        ->orWhere('priority', 'like', "%{$term}%");
                 });
             })
             ->when($priority, fn ($query, $value) => $query->where('priority', $value))
@@ -54,7 +55,7 @@ class AnnouncementController extends Controller
             'stats' => [
                 'total' => (clone $officialAnnouncementsQuery)->count(),
                 'active' => (clone $officialAnnouncementsQuery)->where('is_published', true)->count(),
-                'urgent' => (clone $officialAnnouncementsQuery)->where('priority', 'high')->count(),
+                'high' => (clone $officialAnnouncementsQuery)->where('priority', 'high')->count(),
                 'current_month' => (clone $officialAnnouncementsQuery)->whereYear('created_at', now()->year)
                     ->whereMonth('created_at', now()->month)
                     ->count(),
