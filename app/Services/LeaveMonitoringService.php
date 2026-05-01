@@ -98,8 +98,10 @@ class LeaveMonitoringService
     public function isRegularEmployee(Employee $employee, ?Carbon $referenceDate = null): bool
     {
         $employmentType = strtoupper((string) $employee->employment_type);
+        // Normalize check for any part-time indicator (e.g. "PART-TIME", "PART TIME").
+        $isPartTime = str_contains($employmentType, 'PART-TIME') || str_contains($employmentType, 'PART TIME') || str_contains($employmentType, 'PARTTIME');
 
-        if (str_contains($employmentType, 'PART-TIME FACULTY') || str_contains($employmentType, 'PART TIME FACULTY')) {
+        if ($isPartTime) {
             return false;
         }
 
@@ -110,10 +112,12 @@ class LeaveMonitoringService
         $referenceDate ??= now();
         $hireDate = Carbon::parse($employee->hire_date)->startOfDay();
 
+        // Faculty: regular if hired at least 1 year ago.
         if (str_contains($employmentType, 'FACULTY')) {
             return $hireDate->lte($referenceDate->copy()->subYear());
         }
 
+        // ASP / Admin Support Personnel: regular if hired at least 6 months ago.
         if (str_contains($employmentType, 'ADMIN SUPPORT PERSONNEL') || str_contains($employmentType, 'ASP')) {
             return $hireDate->lte($referenceDate->copy()->subMonths(6));
         }
@@ -242,7 +246,10 @@ class LeaveMonitoringService
     )
     OR
     (
-        UPPER(COALESCE(employment_type, '')) LIKE ?
+        (
+            UPPER(COALESCE(employment_type, '')) LIKE ?
+            OR UPPER(COALESCE(employment_type, '')) LIKE ?
+        )
         AND UPPER(COALESCE(employment_type, '')) NOT LIKE ?
         AND hire_date IS NOT NULL
         AND hire_date <= ?
@@ -254,10 +261,11 @@ SQL;
             $sql,
             [
                 '%FACULTY%',
-                '%PART-TIME FACULTY%',
+                '%PART-TIME%',
                 $facultyThreshold,
                 '%ADMIN SUPPORT PERSONNEL%',
                 '%ASP%',
+                '%PART-TIME%',
                 $aspThreshold,
             ],
         ];
