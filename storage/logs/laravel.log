@@ -1761,3 +1761,7 @@ LINE 1: select * from \"wfh_monitoring_submissions\" order by \"wfh_dat...
 #61 /Users/gerardmln/laravelprojects/nuhris-rev3/vendor/laravel/framework/src/Illuminate/Foundation/resources/server.php(23): require_once('/Users/gerardml...')
 #62 {main}
 "} 
+[2026-05-01 22:01:51] local.ERROR: Maximum execution time of 30 seconds exceeded {"userId":2,"exception":"[object] (Symfony\\Component\\ErrorHandler\\Error\\FatalError(code: 0): Maximum execution time of 30 seconds exceeded at /Users/gerardmln/laravelprojects/nuhris-rev3/vendor/laravel/framework/src/Illuminate/Database/Connection.php:830)
+[stacktrace]
+#0 {main}
+"} 

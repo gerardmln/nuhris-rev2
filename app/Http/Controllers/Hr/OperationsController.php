@@ -12,6 +12,7 @@ use App\Models\EmployeeCredential;
 use App\Models\LeaveRequest;
 use App\Models\User;
 use App\Services\EmployeeScheduleService;
+use App\Services\LeaveMonitoringService;
 use App\Services\SupabaseStorageService;
 use Carbon\Carbon;
 use Carbon\CarbonPeriod;
@@ -811,7 +812,7 @@ class OperationsController extends Controller
     /**
      * Import leave applications from an .xlsx export.
      */
-    public function uploadLeaves(Request $request): RedirectResponse
+    public function uploadLeaves(Request $request, LeaveMonitoringService $leaveMonitoringService): RedirectResponse
     {
         $validated = $request->validate([
             'leaves_file' => ['required', 'file', 'mimes:xlsx,xls', 'max:10240'],
@@ -857,6 +858,9 @@ class OperationsController extends Controller
         $byExactId = $allEmployees->keyBy('employee_id');
         $byNormalizedId = [];
         $byNameIndex = [];
+        $employeeUserIdsByEmail = User::query()
+            ->whereIn('email', $allEmployees->pluck('email')->filter()->unique()->values())
+            ->pluck('id', 'email');
         foreach ($allEmployees as $emp) {
             $byNormalizedId[$this->normalizeEmployeeId($emp->employee_id)] = $emp;
             $lastKey = mb_strtolower(trim((string) $emp->last_name));
@@ -866,8 +870,12 @@ class OperationsController extends Controller
         $imported = 0;
         $updated = 0;
         $skipped = 0;
+        $attendanceFulfilled = 0;
+        $wfhNotifications = 0;
         $unmatched = [];
         $applied = [];
+        $queuedAttendanceRows = [];
+        $queuedWfhRequests = [];
 
         foreach ($dataRows as $rowNumber => $row) {
             if (empty(array_filter($row, fn ($v) => $v !== null && $v !== ''))) {
@@ -921,12 +929,17 @@ class OperationsController extends Controller
                 default => 'pending',
             };
 
+            $policy = $leaveMonitoringService->resolvePolicy($leaveType, $category);
+            $referenceDate = Carbon::parse($startDate);
+            $isEligible = $leaveMonitoringService->isEligibleForPolicy($employee, $policy, $referenceDate);
+            $shouldTrackInLeaveModule = $isEligible && $policy['track_in_leave_module'];
+
             $reasonParts = array_filter([$category, $statusRaw ? 'Source status: '.$statusRaw : null]);
 
             $attributes = [
                 'start_date' => $startDate,
                 'end_date' => $endDate,
-                'leave_type' => $leaveType,
+                'leave_type' => $policy['storage_leave_type'],
                 'days_deducted' => $daysDeducted,
                 'status' => $status,
                 'cutoff_date' => $dateFiled,
@@ -936,23 +949,61 @@ class OperationsController extends Controller
             $existing = LeaveRequest::query()
                 ->where('employee_id', $employee->id)
                 ->whereDate('start_date', $startDate)
-                ->where('leave_type', $leaveType)
+                ->whereIn('leave_type', array_values(array_unique([$leaveType, $policy['storage_leave_type']])))
                 ->first();
 
-            if ($existing) {
-                $existing->update($attributes);
-                $updated++;
-            } else {
-                LeaveRequest::create(array_merge(['employee_id' => $employee->id], $attributes));
-                $imported++;
+            if ($shouldTrackInLeaveModule) {
+                if ($existing) {
+                    $existing->update($attributes);
+                    $updated++;
+                } else {
+                    LeaveRequest::create(array_merge(['employee_id' => $employee->id], $attributes));
+                    $imported++;
+                }
+            } elseif ($existing) {
+                // Keep Leave Monitoring clean for non-trackable leave categories.
+                $existing->delete();
+            }
+
+            if ($status === 'approved' && $isEligible && $policy['auto_mark_present']) {
+                $this->queueAutoPresentAttendance(
+                    $queuedAttendanceRows,
+                    $employee,
+                    Carbon::parse($startDate),
+                    Carbon::parse($endDate),
+                    $policy['label']
+                );
+            }
+
+            if ($status === 'approved' && $isEligible && $policy['requires_wfh_submission']) {
+                $this->queueWfhUploadRequiredNotification(
+                    $queuedWfhRequests,
+                    $employee,
+                    Carbon::parse($startDate),
+                    Carbon::parse($endDate),
+                    $policy['label']
+                );
             }
 
             $applied[$employee->full_name . ' (' . $employee->employee_id . ')'] = true;
         }
 
+        $attendanceFulfilled = $this->insertQueuedAttendanceRows($queuedAttendanceRows);
+        $wfhNotifications = $this->sendQueuedWfhUploadRequiredNotifications(
+            $request,
+            $queuedWfhRequests,
+            $employeeUserIdsByEmail
+        );
+
         $message = "Leave file processed — {$imported} new, {$updated} updated";
         if ($skipped > 0) {
             $message .= ", {$skipped} skipped";
+        }
+        if ($attendanceFulfilled > 0) {
+            $message .= ", {$attendanceFulfilled} attendance day(s) auto-fulfilled";
+        }
+        if ($wfhNotifications > 0) {
+            $message .= ", {$wfhNotifications} WFH notification(s) sent";
         }
         $message .= '.';
 
@@ -965,6 +1016,180 @@ class OperationsController extends Controller
                 'skipped' => $skipped,
                 'total_records' => count($dataRows),
             ]);
+    }
+
+    /**
+     * @param array<string, array<string, mixed>> $queuedAttendanceRows
+     */
+    private function queueAutoPresentAttendance(array &$queuedAttendanceRows, Employee $employee, Carbon $startDate, Carbon $endDate, string $leaveLabel): void
+    {
+        $periodStart = $startDate->copy()->startOfDay();
+        $periodEnd = $endDate->copy()->startOfDay();
+
+        if ($periodEnd->lt($periodStart)) {
+            $periodEnd = $periodStart->copy();
+        }
+
+        foreach (CarbonPeriod::create($periodStart, $periodEnd) as $date) {
+            $recordDate = $date->toDateString();
+            $key = $employee->id.'|'.$recordDate;
+
+            if (isset($queuedAttendanceRows[$key])) {
+                continue;
+            }
+
+            $queuedAttendanceRows[$key] = [
+                'employee_id' => $employee->id,
+                'record_date' => $recordDate,
+                'time_in' => null,
+                'time_out' => null,
+                'scheduled_time_in' => null,
+                'scheduled_time_out' => null,
+                'tardiness_minutes' => 0,
+                'undertime_minutes' => 0,
+                'overtime_minutes' => 0,
+                'schedule_status' => 'validated',
+                'schedule_notes' => 'Auto-fulfilled from approved leave: '.$leaveLabel,
+                'status' => 'present',
+            ];
+        }
+    }
+
+    /**
+     * @param array<string, array<string, mixed>> $queuedAttendanceRows
+     */
+    private function insertQueuedAttendanceRows(array $queuedAttendanceRows): int
+    {
+        if (empty($queuedAttendanceRows)) {
+            return 0;
+        }
+
+        $rows = array_values($queuedAttendanceRows);
+        $employeeIds = array_values(array_unique(array_map(fn ($row) => (int) $row['employee_id'], $rows)));
+        $recordDates = array_values(array_map(fn ($row) => (string) $row['record_date'], $rows));
+        $minDate = min($recordDates);
+        $maxDate = max($recordDates);
+
+        $existingKeys = AttendanceRecord::query()
+            ->select(['employee_id', 'record_date'])
+            ->whereIn('employee_id', $employeeIds)
+            ->whereBetween('record_date', [$minDate, $maxDate])
+            ->get()
+            ->mapWithKeys(fn (AttendanceRecord $record) => [
+                $record->employee_id.'|'.Carbon::parse($record->record_date)->toDateString() => true,
+            ]);
+
+        $now = now();
+        $toInsert = [];
+
+        foreach ($rows as $row) {
+            $key = $row['employee_id'].'|'.$row['record_date'];
+            if ($existingKeys->has($key)) {
+                continue;
+            }
+
+            $row['created_at'] = $now;
+            $row['updated_at'] = $now;
+            $toInsert[] = $row;
+        }
+
+        if (empty($toInsert)) {
+            return 0;
+        }
+
+        foreach (array_chunk($toInsert, 500) as $chunk) {
+            AttendanceRecord::insert($chunk);
+        }
+
+        return count($toInsert);
+    }
+
+    /**
+     * @param array<int, array{employee:Employee,ranges:array<string, array{start:Carbon,end:Carbon,label:string}>}> $queuedWfhRequests
+     */
+    private function queueWfhUploadRequiredNotification(array &$queuedWfhRequests, Employee $employee, Carbon $startDate, Carbon $endDate, string $leaveLabel): void
+    {
+        if (! isset($queuedWfhRequests[$employee->id])) {
+            $queuedWfhRequests[$employee->id] = [
+                'employee' => $employee,
+                'ranges' => [],
+            ];
+        }
+
+        $rangeKey = $startDate->toDateString().'|'.$endDate->toDateString().'|'.$leaveLabel;
+        $queuedWfhRequests[$employee->id]['ranges'][$rangeKey] = [
+            'start' => $startDate->copy()->startOfDay(),
+            'end' => $endDate->copy()->startOfDay(),
+            'label' => $leaveLabel,
+        ];
+    }
+
+    /**
+     * @param array<int, array{employee:Employee,ranges:array<string, array{start:Carbon,end:Carbon,label:string}>}> $queuedWfhRequests
+     */
+    private function sendQueuedWfhUploadRequiredNotifications(Request $request, array $queuedWfhRequests, \Illuminate\Support\Collection $employeeUserIdsByEmail): int
+    {
+        if (empty($queuedWfhRequests)) {
+            return 0;
+        }
+
+        $createdNotifications = 0;
+
+        foreach ($queuedWfhRequests as $payload) {
+            $employee = $payload['employee'];
+            $employeeEmail = (string) $employee->email;
+
+            if ($employeeEmail === '' || ! $employeeUserIdsByEmail->has($employeeEmail)) {
+                continue;
+            }
+
+            $rangeLabels = collect($payload['ranges'])
+                ->map(function (array $range) {
+                    /** @var Carbon $start */
+                    $start = $range['start'];
+                    /** @var Carbon $end */
+                    $end = $range['end'];
+                    /** @var string $label */
+                    $label = $range['label'];
+
+                    $dateLabel = $start->equalTo($end)
+                        ? $start->format('F d, Y')
+                        : $start->format('F d, Y').' to '.$end->format('F d, Y');
+
+                    return $label.' ('.$dateLabel.')';
+                })
+                ->values()
+                ->all();
+
+            $content = 'Your approved Work From Home leave requires WFH materials. ';
+            $content .= 'Please upload your WFH monitoring sheet so HR can review and finalize your attendance as Present.';
+
+            if (! empty($rangeLabels)) {
+                $content .= ' Affected request(s): '.implode('; ', $rangeLabels).'.';
+            }
+
+            $announcement = Announcement::forceCreate([
+                'title' => 'WFH Action Required',
+                'content' => $content,
+                'priority' => 'high',
+                'target_employee_type' => 'employee',
+                'published_at' => now(),
+                'is_published' => true,
+                'created_by' => $request->user()?->id,
+            ]);
+
+            AnnouncementNotification::create([
+                'announcement_id' => $announcement->id,
+                'user_id' => (int) $employeeUserIdsByEmail->get($employeeEmail),
+                'is_read' => false,
+                'read_at' => null,
+                'redirect_url' => route('employee.wfh-monitoring.upload'),
+            ]);
+
+            $createdNotifications++;
+        }
+
+        return $createdNotifications;
     }
 
     /**
