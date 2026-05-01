@@ -6,6 +6,7 @@ use App\Models\AttendanceRecord;
 use App\Models\Employee;
 use Carbon\Carbon;
 use Carbon\CarbonPeriod;
+use Illuminate\Database\Eloquent\Builder;
 
 class LeaveMonitoringService
 {
@@ -121,6 +122,27 @@ class LeaveMonitoringService
         return false;
     }
 
+    public function applyEmployeeClassFilter(Builder $query, string $employeeClass, ?Carbon $referenceDate = null): Builder
+    {
+        $employeeClass = strtolower(trim($employeeClass));
+
+        if (! in_array($employeeClass, ['regular', 'irregular'], true)) {
+            return $query;
+        }
+
+        $referenceDate ??= now();
+
+        [$regularSql, $bindings] = $this->regularEmployeeSql($referenceDate);
+
+        if ($employeeClass === 'regular') {
+            $query->whereRaw($regularSql, $bindings);
+        } else {
+            $query->whereRaw('NOT ('.$regularSql.')', $bindings);
+        }
+
+        return $query;
+    }
+
     public function autoMarkPresentIfMissing(Employee $employee, Carbon $startDate, Carbon $endDate, string $leaveLabel): int
     {
         $created = 0;
@@ -200,5 +222,44 @@ class LeaveMonitoringService
         }
 
         return false;
+    }
+
+    /**
+     * @return array{0:string,1:array<int, string>}
+     */
+    private function regularEmployeeSql(Carbon $referenceDate): array
+    {
+        $facultyThreshold = $referenceDate->copy()->subYear()->toDateString();
+        $aspThreshold = $referenceDate->copy()->subMonths(6)->toDateString();
+
+        $sql = <<<'SQL'
+(
+    (
+        UPPER(COALESCE(employment_type, '')) LIKE ?
+        AND UPPER(COALESCE(employment_type, '')) NOT LIKE ?
+        AND hire_date IS NOT NULL
+        AND hire_date <= ?
+    )
+    OR
+    (
+        UPPER(COALESCE(employment_type, '')) LIKE ?
+        AND UPPER(COALESCE(employment_type, '')) NOT LIKE ?
+        AND hire_date IS NOT NULL
+        AND hire_date <= ?
+    )
+)
+SQL;
+
+        return [
+            $sql,
+            [
+                '%FACULTY%',
+                '%PART-TIME FACULTY%',
+                $facultyThreshold,
+                '%ADMIN SUPPORT PERSONNEL%',
+                '%ASP%',
+                $aspThreshold,
+            ],
+        ];
     }
 }

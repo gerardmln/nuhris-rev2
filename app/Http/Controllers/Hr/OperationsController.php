@@ -238,9 +238,11 @@ class OperationsController extends Controller
     public function timekeeping(Request $request): View
     {
         $scheduleService = app(EmployeeScheduleService::class);
+        $leaveMonitoringService = app(LeaveMonitoringService::class);
         $month = $request->integer('month', (int) now()->month);
         $year = $request->integer('year', (int) now()->year);
         $search = $request->string('search')->trim()->toString();
+        $employeeClass = $request->string('employee_class')->toString() ?: 'all';
         $selectedDate = Carbon::createFromDate($year, $month, 1);
 
         $query = Employee::query()
@@ -257,6 +259,8 @@ class OperationsController extends Controller
                   ->orWhereHas('department', fn ($dq) => $dq->where('name', 'ILIKE', "%{$search}%"));
             });
         }
+
+        $leaveMonitoringService->applyEmployeeClassFilter($query, $employeeClass, $selectedDate);
 
         $employeeCards = $query->get()->map(function (Employee $employee) use ($selectedDate, $scheduleService) {
             $monthStart = $selectedDate->copy()->startOfMonth();
@@ -299,6 +303,7 @@ class OperationsController extends Controller
             'selectedMonth' => $month,
             'selectedYear' => $year,
             'search' => $search,
+            'employeeClass' => $employeeClass,
         ]);
     }
 
@@ -444,8 +449,10 @@ class OperationsController extends Controller
     {
         $search = $request->string('search')->toString();
         $departmentId = $request->string('department_id')->toString();
+        $employeeClass = $request->string('employee_class')->toString() ?: 'all';
+        $leaveMonitoringService = app(LeaveMonitoringService::class);
 
-        $employees = Employee::query()
+        $employeesQuery = Employee::query()
             ->with([
                 'department',
                 'leaveBalances',
@@ -470,8 +477,11 @@ class OperationsController extends Controller
             })
             ->when(filled($departmentId) && $departmentId !== 'asp', fn ($query) => $query->where('department_id', $departmentId))
             ->orderBy('last_name')
-            ->orderBy('first_name')
-            ->get();
+            ->orderBy('first_name');
+
+        $leaveMonitoringService->applyEmployeeClassFilter($employeesQuery, $employeeClass);
+
+        $employees = $employeesQuery->get();
 
         $leaveCards = $employees->map(function (Employee $employee) {
             $balances = $employee->leaveBalances;
@@ -567,6 +577,7 @@ class OperationsController extends Controller
             'filters' => [
                 'search' => $search,
                 'department_id' => $departmentId,
+                'employee_class' => $employeeClass,
             ],
             'monthOptions' => $monthOptions,
             'stats' => [

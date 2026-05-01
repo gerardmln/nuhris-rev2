@@ -5,6 +5,26 @@
 
 @section('content')
     <p class="text-sm text-slate-600">View your leave balances and history. Leave data is managed by HR (read-only).</p>
+
+    {{-- Leave Usage Summary --}}
+    @if (isset($leaveUsage))
+        <div class="grid grid-cols-1 gap-3 md:grid-cols-3 mb-6">
+            <article class="rounded-2xl border border-emerald-200 bg-emerald-50 p-4 shadow-sm">
+                <p class="text-sm font-medium text-emerald-700">Vacation Used</p>
+                <p class="mt-1 text-3xl font-extrabold text-emerald-600">{{ rtrim(rtrim(number_format($leaveUsage['vacation_used'], 1, '.', ''), '0'), '.') }}</p>
+            </article>
+            <article class="rounded-2xl border border-amber-200 bg-amber-50 p-4 shadow-sm">
+                <p class="text-sm font-medium text-amber-700">Sick Used</p>
+                <p class="mt-1 text-3xl font-extrabold text-amber-600">{{ rtrim(rtrim(number_format($leaveUsage['sick_used'], 1, '.', ''), '0'), '.') }}</p>
+            </article>
+            <article class="rounded-2xl border border-purple-300 bg-purple-100 p-4 shadow-sm">
+                <p class="text-sm font-medium text-purple-700">Emergency Used</p>
+                <p class="mt-1 text-3xl font-extrabold text-purple-700">{{ rtrim(rtrim(number_format($leaveUsage['emergency_used'], 1, '.', ''), '0'), '.') }}</p>
+            </article>
+        </div>
+    @endif
+
+    {{-- Leave Balances --}}
     @if (count($leaveBalances) > 0)
         <div class="grid grid-cols-1 gap-3 md:grid-cols-3">
             @foreach ($leaveBalances as $balance)
@@ -15,8 +35,6 @@
                 </article>
             @endforeach
         </div>
-    @else
-        <p class="text-center text-lg text-slate-400">No leave balance data available yet. HR will upload this information.</p>
     @endif
 
     <article class="rounded-2xl border border-slate-300 bg-white p-6 shadow-sm">

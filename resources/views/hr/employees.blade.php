@@ -108,8 +108,8 @@
                 </div>
 
                 <article class="rounded-xl border border-slate-300 bg-white p-3 shadow-sm">
-                    <form method="GET" action="{{ route('employees.index') }}" class="grid grid-cols-5 gap-2">
-                        <div class="col-span-2">
+                    <form method="GET" action="{{ route('employees.index') }}" class="grid grid-cols-1 gap-2 md:grid-cols-6">
+                        <div class="md:col-span-2">
                             <input
                                 type="text"
                                 name="search"
@@ -118,13 +118,20 @@
                                 class="w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-blue-400 focus:outline-none"
                             >
                         </div>
-                        <div class="col-span-3">
+                        <div class="md:col-span-2">
                             <select name="department_id" onchange="this.form.submit()" class="w-full rounded-md border border-slate-300 px-2 py-2 text-sm focus:border-blue-400 focus:outline-none">
                                 <option value="">All Departments</option>
                                 <option value="asp" @selected($filters['department_id'] === 'asp')>Admin Support Personnel</option>
                                 @foreach ($departments as $department)
                                     <option value="{{ $department->id }}" @selected($filters['department_id'] == $department->id)>{{ $department->name }}</option>
                                 @endforeach
+                            </select>
+                        </div>
+                        <div class="md:col-span-2">
+                            <select name="employee_class" onchange="this.form.submit()" class="w-full min-w-[14rem] rounded-md border border-slate-300 px-2 py-2 text-sm focus:border-blue-400 focus:outline-none">
+                                <option value="all" @selected(($filters['employee_class'] ?? 'all') === 'all')>All Employee Types</option>
+                                <option value="regular" @selected(($filters['employee_class'] ?? '') === 'regular')>Regular Employees</option>
+                                <option value="irregular" @selected(($filters['employee_class'] ?? '') === 'irregular')>Irregular Employees</option>
                             </select>
                         </div>
                     </form>

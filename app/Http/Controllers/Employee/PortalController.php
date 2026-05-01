@@ -522,9 +522,36 @@ class PortalController extends Controller
             ])->values()
             : collect();
 
+        // Calculate used days for each leave type from approved requests only
+        $leaveUsage = [
+            'vacation_used' => 0,
+            'sick_used' => 0,
+            'emergency_used' => 0,
+        ];
+
+        if ($employee) {
+            $approvedRequests = $employee->leaveRequests()
+                ->where('status', 'approved')
+                ->get();
+
+            foreach ($approvedRequests as $request) {
+                $leaveType = strtolower((string) $request->leave_type);
+                $days = (float) $request->days_deducted;
+
+                if (str_contains($leaveType, 'vacation')) {
+                    $leaveUsage['vacation_used'] += $days;
+                } elseif (str_contains($leaveType, 'sick')) {
+                    $leaveUsage['sick_used'] += $days;
+                } elseif (str_contains($leaveType, 'emergency')) {
+                    $leaveUsage['emergency_used'] += $days;
+                }
+            }
+        }
+
         return view('employee.leave', [
             'leaveBalances' => $leaveBalances,
             'leaveHistory' => $leaveHistory,
+            'leaveUsage' => $leaveUsage,
         ]);
     }
 

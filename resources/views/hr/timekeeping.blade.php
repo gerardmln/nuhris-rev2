@@ -101,7 +101,7 @@
     <article class="rounded-xl border border-slate-300 bg-white p-3 shadow-sm">
         <div class="grid grid-cols-1 gap-2 md:grid-cols-4">
             <form method="GET" action="{{ route('timekeeping.index') }}" class="md:col-span-4">
-                <div class="flex gap-2">
+                <div class="flex flex-col gap-2 lg:flex-row">
                     <input type="text" name="search" value="{{ $search ?? '' }}" placeholder="Search by name, email, ID, or department..."
                            class="flex-1 rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-blue-400 focus:outline-none">
 
@@ -110,7 +110,7 @@
                         this.form.querySelector('[name=month]').value = parts[0];
                         this.form.querySelector('[name=year]').value = parts[1];
                         this.form.submit();
-                    " class="rounded-md border border-slate-300 bg-white px-4 py-2 text-sm focus:border-blue-400 focus:outline-none">
+                    " class="rounded-md border border-slate-300 bg-white px-4 py-2 text-sm focus:border-blue-400 focus:outline-none lg:w-56">
                         @if(isset($periods))
                             @foreach($periods as $p)
                                 <option value="{{ $p['month'] }}-{{ $p['year'] }}" @selected($p['month'] == ($selectedMonth ?? now()->month) && $p['year'] == ($selectedYear ?? now()->year))>{{ $p['label'] }}</option>
@@ -119,6 +119,12 @@
                             @php $current = now(); @endphp
                             <option value="{{ $current->month }}-{{ $current->year }}">{{ $current->format('F Y') }}</option>
                         @endif
+                    </select>
+
+                    <select name="employee_class" onchange="this.form.submit()" class="rounded-md border border-slate-300 bg-white px-4 py-2 text-sm focus:border-blue-400 focus:outline-none lg:min-w-[14rem]">
+                        <option value="all" @selected(($employeeClass ?? 'all') === 'all')>All Employee Types</option>
+                        <option value="regular" @selected(($employeeClass ?? '') === 'regular')>Regular Employees</option>
+                        <option value="irregular" @selected(($employeeClass ?? '') === 'irregular')>Irregular Employees</option>
                     </select>
 
                     <input type="hidden" name="month" value="{{ $selectedMonth ?? now()->month }}">

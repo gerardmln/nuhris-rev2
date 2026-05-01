@@ -9,6 +9,7 @@ use App\Mail\EmployeeCredentialsMail;
 use App\Models\Department;
 use App\Models\Employee;
 use App\Models\User;
+use App\Services\LeaveMonitoringService;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -25,6 +26,8 @@ class EmployeeController extends Controller
     {
         $search = $request->string('search')->toString();
         $departmentId = $request->string('department_id')->toString();
+        $employeeClass = $request->string('employee_class')->toString() ?: 'all';
+        $leaveMonitoringService = app(LeaveMonitoringService::class);
 
         $employeesQuery = Employee::query()
             ->with(['department', 'latestResumeCredential'])
@@ -51,6 +54,8 @@ class EmployeeController extends Controller
             $employeesQuery->where('department_id', $departmentId);
         }
 
+        $leaveMonitoringService->applyEmployeeClassFilter($employeesQuery, $employeeClass);
+
         $employees = $employeesQuery
             ->paginate(10)
             ->withQueryString();
@@ -61,6 +66,7 @@ class EmployeeController extends Controller
             'filters' => [
                 'search' => $search,
                 'department_id' => $departmentId,
+                'employee_class' => $employeeClass,
             ],
         ], $this->formOptions()));
     }
