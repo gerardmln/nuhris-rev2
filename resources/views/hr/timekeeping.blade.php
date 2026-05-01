@@ -100,19 +100,31 @@
 
     <article class="rounded-xl border border-slate-300 bg-white p-3 shadow-sm">
         <div class="grid grid-cols-1 gap-2 md:grid-cols-4">
-            <form method="GET" action="{{ route('timekeeping.index') }}" class="md:col-span-2">
-                <input type="text" name="search" value="{{ $search ?? '' }}" placeholder="Search by name, email, ID, or department..."
-                       class="w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-blue-400 focus:outline-none">
+            <form method="GET" action="{{ route('timekeeping.index') }}" class="md:col-span-4">
+                <div class="flex gap-2">
+                    <input type="text" name="search" value="{{ $search ?? '' }}" placeholder="Search by name, email, ID, or department..."
+                           class="flex-1 rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-blue-400 focus:outline-none">
+
+                    <select name="period" onchange="
+                        var parts = this.value.split('-');
+                        this.form.querySelector('[name=month]').value = parts[0];
+                        this.form.querySelector('[name=year]').value = parts[1];
+                        this.form.submit();
+                    " class="rounded-md border border-slate-300 bg-white px-4 py-2 text-sm focus:border-blue-400 focus:outline-none">
+                        @if(isset($periods))
+                            @foreach($periods as $p)
+                                <option value="{{ $p['month'] }}-{{ $p['year'] }}" @selected($p['month'] == ($selectedMonth ?? now()->month) && $p['year'] == ($selectedYear ?? now()->year))>{{ $p['label'] }}</option>
+                            @endforeach
+                        @else
+                            @php $current = now(); @endphp
+                            <option value="{{ $current->month }}-{{ $current->year }}">{{ $current->format('F Y') }}</option>
+                        @endif
+                    </select>
+
+                    <input type="hidden" name="month" value="{{ $selectedMonth ?? now()->month }}">
+                    <input type="hidden" name="year" value="{{ $selectedYear ?? now()->year }}">
+                </div>
             </form>
-            <div class="md:col-span-2">
-                <form method="POST" action="{{ route('biometrics.clear') }}" class="js-loading-form"
-                      onsubmit="return confirm('Clear ALL uploaded biometric attendance records in the system? This cannot be undone.');">
-                    @csrf
-                    <button type="submit" class="w-full rounded-md border border-red-300 bg-red-50 px-3 py-2 text-sm font-semibold text-red-700 hover:bg-red-100 transition">
-                        Clear All Biometric Data
-                    </button>
-                </form>
-            </div>
         </div>
     </article>
 
@@ -127,17 +139,6 @@
                             <p class="text-sm text-slate-500">{{ $card['department'] }}</p>
                         </div>
                     </div>
-                    @if ($card['has_data'])
-                        <form method="POST" action="{{ route('biometrics.clear-employee', $card['id']) }}" onsubmit="return confirm('Clear attendance records for {{ $card['name'] }} this month?');" class="js-loading-form">
-                            @csrf
-                            <input type="hidden" name="month" value="{{ $selectedMonth }}">
-                            <input type="hidden" name="year" value="{{ $selectedYear }}">
-                            <button type="submit" class="rounded-md border border-red-200 bg-white px-2 py-1 text-xs font-medium text-red-500 hover:bg-red-50 transition" title="Clear this employee's attendance">
-                                <svg class="inline w-3.5 h-3.5 mr-0.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="m14.74 9-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 0 1-2.244 2.077H8.084a2.25 2.25 0 0 1-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 0 0-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 0 1 3.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 0 0-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 0 0-7.5 0"/></svg>
-                                Clear
-                            </button>
-                        </form>
-                    @endif
                 </div>
                 <div class="grid grid-cols-2 gap-3">
                     <div class="rounded-lg bg-emerald-100 p-3 text-center">
