@@ -12,6 +12,10 @@
     }
 @endphp
 
+@php
+    $cancelRoute = $cancelRoute ?? route('employees.index');
+@endphp
+
 <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
     @if ($isEdit)
         <div>
@@ -141,7 +145,7 @@
 @endunless
 
 <div class="mt-6 flex items-center justify-end gap-3">
-    <a href="{{ route('employees.index') }}" class="rounded-md border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50">Cancel</a>
+    <a href="{{ $cancelRoute }}" class="rounded-md border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50">Cancel</a>
     <button type="submit" class="rounded-md bg-[#00386f] px-4 py-2 text-sm font-semibold text-white hover:bg-[#002f5d]">
         {{ $isEdit ? 'Update Employee' : 'Create Employee' }}
     </button>

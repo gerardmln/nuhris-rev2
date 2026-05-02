@@ -61,10 +61,10 @@ class EmployeeController extends Controller
 
     public function edit(Employee $employee): View
     {
-        return view('admin.employees.edit', [
+        return view('admin.employees.edit', array_merge([
             'employee' => $employee,
             'departments' => Department::query()->orderBy('name')->get(),
-        ]);
+        ], $this->formOptions()));
     }
 
     public function show(Employee $employee): View
@@ -77,6 +77,7 @@ class EmployeeController extends Controller
     public function update(UpdateEmployeeRequest $request, Employee $employee): RedirectResponse
     {
         $payload = $request->validated();
+        $payload = $this->applyDefaultDepartmentForNonTeachingRoles($payload);
         $previousEmail = $employee->email;
         $employee->update($payload);
 
@@ -154,5 +155,51 @@ class EmployeeController extends Controller
         });
 
         return [$tempPassword];
+    }
+
+    /**
+     * Shared dropdown options for the employee edit screen.
+     *
+     * @return array<string,mixed>
+     */
+    private function formOptions(): array
+    {
+        $facultyPositions = array_values(config('hris.faculty_positions', []));
+        $aspPositions = array_values(config('hris.admin_support_offices', []));
+
+        return [
+            'employmentTypes' => config('hris.employment_types', []),
+            'facultyPositions' => $facultyPositions,
+            'aspPositions' => $aspPositions,
+            'employeePositions' => array_values(array_unique(array_merge($facultyPositions, $aspPositions))),
+            'facultyRankings' => config('hris.faculty_rankings', []),
+        ];
+    }
+
+    private function applyDefaultDepartmentForNonTeachingRoles(array $payload): array
+    {
+        $employmentType = Str::lower((string) ($payload['employment_type'] ?? ''));
+
+        if (Str::contains($employmentType, 'faculty')) {
+            return $payload;
+        }
+
+        $position = Str::lower((string) ($payload['position'] ?? ''));
+        $facultyPositions = array_map(
+            fn ($p) => Str::lower((string) $p),
+            (array) config('hris.faculty_positions', [])
+        );
+
+        if (in_array($position, $facultyPositions, true)) {
+            return $payload;
+        }
+
+        $aspDepartmentId = Department::query()->where('name', 'ASP')->value('id');
+
+        if (filled($aspDepartmentId)) {
+            $payload['department_id'] = $aspDepartmentId;
+        }
+
+        return $payload;
     }
 }

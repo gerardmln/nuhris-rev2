@@ -107,6 +107,23 @@
                         <span class="inline-flex h-10 w-10 items-center justify-center rounded-full bg-[#00386f] text-sm font-semibold text-white">{{ $card['initials'] }}</span>
                         <div><p class="text-xl font-bold text-[#1f2b5d]">{{ $card['name'] }}</p><p class="text-sm text-slate-500">{{ $card['department'] }}</p></div>
                     </div>
+                    <span class="inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold {{ ($card['employee_status'] ?? 'non-regular') === 'regular' ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800' }}">
+                        {{ $card['employee_status_label'] ?? 'Non-Regular' }}
+                    </span>
+                </div>
+                <div class="mb-3 flex flex-wrap gap-2">
+                    @if (($card['vacation_used'] ?? 0) > 0)
+                        <span class="inline-flex items-center rounded-full bg-emerald-100 px-2.5 py-1 text-[11px] font-semibold text-emerald-800">VL: {{ rtrim(rtrim(number_format($card['vacation_used'], 2), '0'), '.') }}</span>
+                    @endif
+                    @if (($card['sick_used'] ?? 0) > 0)
+                        <span class="inline-flex items-center rounded-full bg-amber-100 px-2.5 py-1 text-[11px] font-semibold text-amber-800">SL: {{ rtrim(rtrim(number_format($card['sick_used'], 2), '0'), '.') }}</span>
+                    @endif
+                    @if (($card['emergency_used'] ?? 0) > 0)
+                        <span class="inline-flex items-center rounded-full bg-violet-100 px-2.5 py-1 text-[11px] font-semibold text-violet-800">EL: {{ rtrim(rtrim(number_format($card['emergency_used'], 2), '0'), '.') }}</span>
+                    @endif
+                    @if (($card['employee_status'] ?? 'non-regular') === 'non-regular' && (($card['vacation_used'] ?? 0) > 0 || ($card['sick_used'] ?? 0) > 0 || ($card['emergency_used'] ?? 0) > 0))
+                        <span class="inline-flex items-center rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-semibold text-slate-700">Tracked for non-regular employee</span>
+                    @endif
                 </div>
                 <div class="grid grid-cols-3 gap-2 text-center">
                     <div class="rounded-lg bg-emerald-50 p-2">

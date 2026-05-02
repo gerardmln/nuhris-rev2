@@ -498,6 +498,8 @@ class OperationsController extends Controller
             $balances = $employee->leaveBalances;
             $today = now()->startOfDay();
             $hireDate = $employee->hire_date ? Carbon::parse($employee->hire_date)->startOfDay() : null;
+            $leaveMonitoringService = app(LeaveMonitoringService::class);
+            $isRegularEmployee = $leaveMonitoringService->isRegularEmployee($employee, $today);
 
             $requests = $employee->leaveRequests->filter(function (LeaveRequest $request) use ($hireDate, $today) {
                 if (! $request->start_date) {
@@ -564,6 +566,8 @@ class OperationsController extends Controller
                 'carry_over' => 0,
                 'has_data' => $requests->isNotEmpty() || $balances->isNotEmpty(),
                 'leave_types' => $usedByType->keys()->toArray(),
+                'employee_status' => $isRegularEmployee ? 'regular' : 'non-regular',
+                'employee_status_label' => $isRegularEmployee ? 'Regular' : 'Non-Regular',
             ];
         });
 
@@ -954,7 +958,8 @@ class OperationsController extends Controller
             $policy = $leaveMonitoringService->resolvePolicy($leaveType, $category);
             $referenceDate = Carbon::parse($startDate);
             $isEligible = $leaveMonitoringService->isEligibleForPolicy($employee, $policy, $referenceDate);
-            $shouldTrackInLeaveModule = $isEligible && $policy['track_in_leave_module'];
+            $isTrackedLeaveType = in_array($policy['storage_leave_type'], ['Vacation Leave', 'Sick Leave', 'Emergency Leave'], true);
+            $shouldTrackInLeaveModule = $policy['track_in_leave_module'] && ($isEligible || $isTrackedLeaveType);
 
             $reasonParts = array_filter([$category, $statusRaw ? 'Source status: '.$statusRaw : null]);
 
