@@ -40,9 +40,19 @@ class OperationsController extends Controller
             ->orderBy('first_name')
             ->first();
 
+        $absencesCount = 0;
+        if ($employee) {
+            $absencesCount = AttendanceRecord::query()
+                ->where('employee_id', $employee->id)
+                ->whereBetween('record_date', [now()->startOfYear()->toDateString(), now()->endOfYear()->toDateString()])
+                ->where('status', 'absent')
+                ->count();
+        }
+
         return view('hr.viewemployeeprofile', [
             'employee' => $employee,
             'schedule_summary' => $scheduleService->summarizeSubmission($employee ? $scheduleService->currentSubmission($employee) : null),
+            'absences_count' => $absencesCount,
         ]);
     }
 
@@ -267,25 +277,37 @@ class OperationsController extends Controller
 
         $leaveMonitoringService->applyEmployeeClassFilter($query, $employeeClass, $selectedDate);
 
-        $employeeCards = $query->get()->map(function (Employee $employee) use ($selectedDate, $scheduleService) {
-            $monthStart = $selectedDate->copy()->startOfMonth();
-            $monthEnd = $selectedDate->copy()->endOfMonth();
+        $employees = $query->get();
 
-            $attendanceRecords = AttendanceRecord::where('employee_id', $employee->id)
-                ->whereBetween('record_date', [$monthStart, $monthEnd])
-                ->get();
+        $monthStart = $selectedDate->copy()->startOfMonth();
+        $monthEnd = $selectedDate->copy()->endOfMonth();
 
-            $presentDays = $attendanceRecords->where('status', 'present')->count();
-            $totalTardiness = (int) $attendanceRecords->sum('tardiness_minutes');
+        // Pre-aggregate attendance stats to avoid N+1 queries
+        $attendanceStats = AttendanceRecord::query()
+            ->whereIn('employee_id', $employees->pluck('id'))
+            ->whereBetween('record_date', [$monthStart->toDateString(), $monthEnd->toDateString()])
+            ->get()
+            ->groupBy('employee_id')
+            ->map(function ($group) {
+                return [
+                    'present' => $group->where('status', 'present')->count(),
+                    'tardiness' => (int) $group->sum('tardiness_minutes'),
+                    'has_data' => $group->isNotEmpty(),
+                ];
+            });
+
+        $employeeCards = $employees->map(function (Employee $employee) use ($selectedDate, $scheduleService, $attendanceStats, $monthStart, $monthEnd) {
+            $stats = $attendanceStats->get($employee->id, ['present' => 0, 'tardiness' => 0, 'has_data' => false]);
 
             return [
                 'id' => $employee->id,
                 'initials' => str($employee->full_name)->explode(' ')->take(2)->map(fn ($part) => strtoupper(substr($part, 0, 1)))->join(''),
                 'name' => $employee->full_name,
                 'department' => $employee->department?->name ?? 'Unassigned',
-                'present' => $presentDays,
-                'tardiness' => $totalTardiness,
-                'has_data' => $attendanceRecords->isNotEmpty(),
+                'present' => $stats['present'],
+                'tardiness' => $stats['tardiness'],
+                'absences' => $scheduleService->countDtrAbsences($employee, $monthStart, $monthEnd),
+                'has_data' => $stats['has_data'],
                 'schedule_summary' => $scheduleService->summarizeSubmission($scheduleService->currentSubmission($employee)),
             ];
         });
@@ -494,7 +516,18 @@ class OperationsController extends Controller
             $employee->load('leaveBalances');
         });
 
-        $leaveCards = $employees->map(function (Employee $employee) {
+        // Pre-aggregate absence counts for the current year to avoid N+1 queries
+        $yearStart = now()->startOfYear()->toDateString();
+        $yearEnd = now()->endOfYear()->toDateString();
+        $absencesByEmployee = AttendanceRecord::query()
+            ->whereIn('employee_id', $employees->pluck('id'))
+            ->whereBetween('record_date', [$yearStart, $yearEnd])
+            ->where('status', 'absent')
+            ->get()
+            ->groupBy('employee_id')
+            ->map(fn ($group) => $group->count());
+
+        $leaveCards = $employees->map(function (Employee $employee) use ($absencesByEmployee) {
             $balances = $employee->leaveBalances;
             $today = now()->startOfDay();
             $hireDate = $employee->hire_date ? Carbon::parse($employee->hire_date)->startOfDay() : null;
@@ -568,6 +601,7 @@ class OperationsController extends Controller
                 'leave_types' => $usedByType->keys()->toArray(),
                 'employee_status' => $isRegularEmployee ? 'regular' : 'non-regular',
                 'employee_status_label' => $isRegularEmployee ? 'Regular' : 'Non-Regular',
+                'absences' => $absencesByEmployee->get($employee->id, 0),
             ];
         });
 
@@ -1674,7 +1708,7 @@ class OperationsController extends Controller
                     'time_out' => '-',
                     'tardiness_minutes' => 0,
                     'undertime_minutes' => 0,
-                    'status' => 'No record',
+                    'status' => 'Absent',
                 ];
             })
             ->values();

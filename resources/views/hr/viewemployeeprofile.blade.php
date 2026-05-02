@@ -26,6 +26,7 @@
                 <div><dt class="font-semibold">Email</dt><dd>{{ $employee->email }}</dd></div>
                 <div><dt class="font-semibold">Phone</dt><dd>{{ $employee->phone ?? 'N/A' }}</dd></div>
                 <div><dt class="font-semibold">Department</dt><dd>{{ $employee->department->name ?? 'Unassigned' }}</dd></div>
+                <div><dt class="font-semibold">Absences (current year)</dt><dd>{{ $absences_count ?? 0 }}</dd></div>
                 <div><dt class="font-semibold">Hired</dt><dd>{{ optional($employee->hire_date)->format('M d, Y') ?? 'N/A' }}</dd></div>
                 <div><dt class="font-semibold">Approved Schedule</dt><dd>{{ $schedule_summary }}</dd></div>
                 <div><dt class="font-semibold">Employee ID</dt><dd>{{ $employee->employee_id }}</dd></div>

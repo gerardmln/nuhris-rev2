@@ -177,7 +177,36 @@ class OperationsController extends Controller
             ->orderBy('record_date', 'desc')
             ->get();
 
+        // Build employee cards similar to HR Timekeeping UI
         $employees = Employee::query()->orderBy('last_name')->orderBy('first_name')->get();
+
+        $attendanceStats = AttendanceRecord::query()
+            ->whereIn('employee_id', $employees->pluck('id'))
+            ->whereBetween('record_date', [$dateFrom->toDateString(), $dateTo->toDateString()])
+            ->get()
+            ->groupBy('employee_id')
+            ->map(fn ($group) => [
+                'present' => $group->where('status', 'present')->count(),
+                'tardiness' => (int) $group->sum('tardiness_minutes'),
+                'has_data' => $group->isNotEmpty(),
+            ]);
+
+        $employeeCards = $employees->map(function (Employee $emp) use ($attendanceStats, $dateFrom, $dateTo) {
+            $stats = $attendanceStats->get($emp->id, ['present' => 0, 'tardiness' => 0, 'has_data' => false]);
+            $scheduleService = app(EmployeeScheduleService::class);
+
+            return [
+                'id' => $emp->id,
+                'initials' => str($emp->full_name)->explode(' ')->take(2)->map(fn ($part) => strtoupper(substr($part, 0, 1)))->join(''),
+                'name' => $emp->full_name,
+                'department' => $emp->department?->name ?? 'Unassigned',
+                'present' => $stats['present'],
+                'tardiness' => $stats['tardiness'],
+                'absences' => $scheduleService->countDtrAbsences($emp, $dateFrom, $dateTo),
+                'has_data' => $stats['has_data'],
+                'schedule_summary' => $scheduleService->summarizeSubmission($scheduleService->currentSubmission($emp)),
+            ];
+        });
 
         return view('admin.dtr.index', [
             'records' => $records,
@@ -185,13 +214,26 @@ class OperationsController extends Controller
             'employees' => $employees,
             'dateFrom' => $dateFrom,
             'dateTo' => $dateTo,
+            'employeeCards' => $employeeCards,
         ]);
     }
 
     public function editDtrRecord(AttendanceRecord $record): View
     {
+        $employee = $record->employee;
+        $absenceCount = 0;
+
+        if ($employee && $record->record_date) {
+            $scheduleService = app(EmployeeScheduleService::class);
+            $monthStart = $record->record_date->copy()->startOfMonth();
+            $monthEnd = $record->record_date->copy()->endOfMonth();
+
+            $absenceCount = $scheduleService->countDtrAbsences($employee, $monthStart, $monthEnd);
+        }
+
         return view('admin.dtr.edit', [
             'record' => $record,
+            'absenceCount' => $absenceCount,
         ]);
     }
 
@@ -297,7 +339,18 @@ class OperationsController extends Controller
             $employee->load('leaveBalances');
         });
 
-        $leaveCards = $employees->map(function (Employee $employee) {
+        // Pre-aggregate absence counts for the current year to avoid N+1 queries
+        $yearStart = now()->startOfYear()->toDateString();
+        $yearEnd = now()->endOfYear()->toDateString();
+        $absencesByEmployee = AttendanceRecord::query()
+            ->whereIn('employee_id', $employees->pluck('id'))
+            ->whereBetween('record_date', [$yearStart, $yearEnd])
+            ->where('status', 'absent')
+            ->get()
+            ->groupBy('employee_id')
+            ->map(fn ($group) => $group->count());
+
+        $leaveCards = $employees->map(function (Employee $employee) use ($absencesByEmployee) {
             $balances = $employee->leaveBalances;
             $today = now()->startOfDay();
             $hireDate = $employee->hire_date ? Carbon::parse($employee->hire_date)->startOfDay() : null;
@@ -365,6 +418,7 @@ class OperationsController extends Controller
                 'leave_types' => $usedByType->keys()->toArray(),
                 'employee_status' => $isRegularEmployee ? 'regular' : 'non-regular',
                 'employee_status_label' => $isRegularEmployee ? 'Regular' : 'Non-Regular',
+                'absences' => $absencesByEmployee->get($employee->id, 0),
             ];
         });
 

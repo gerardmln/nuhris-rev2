@@ -3,84 +3,89 @@
 @section('title', 'DTR Management')
 
 @section('content')
-<div class="p-8">
-    <h1 class="text-4xl font-bold text-slate-900 mb-8">Daily Time Record (DTR) Management</h1>
+@extends('admin.layout')
 
-    <!-- Filters -->
-    <div class="bg-white rounded-lg shadow p-6 mb-8">
-        <form action="{{ route('admin.dtr.index') }}" method="GET" class="flex gap-4 flex-wrap">
-        <form action="{{ route('admin.dtr.index') }}" method="GET" class="space-y-4">
-            <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
-                <div>
-                    <label class="block text-sm font-medium text-slate-900 mb-2">Employee</label>
-                    <select name="employee_id" class="w-full px-4 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
-                        <option value="">All Employees</option>
-                        @foreach($employees as $emp)
-                            <option value="{{ $emp->id }}" @selected($employee?->id === $emp->id)>{{ $emp->full_name }}</option>
-                        @endforeach
-                    </select>
-                </div>
+@php
+    $pageTitle = 'DTR Management';
+    $pageHeading = 'DTR Management';
+@endphp
 
-                <div>
-                    <label class="block text-sm font-medium text-slate-900 mb-2">From Date</label>
-                    <input type="date" name="date_from" value="{{ $dateFrom?->format('Y-m-d') ?? '' }}" class="w-full px-4 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
-                </div>
-
-                <div>
-                    <label class="block text-sm font-medium text-slate-900 mb-2">To Date</label>
-                    <input type="date" name="date_to" value="{{ $dateTo?->format('Y-m-d') ?? '' }}" class="w-full px-4 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
-                </div>
-
-                <div class="flex flex-col justify-end gap-2">
-                    <button type="submit" class="w-full bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg font-medium transition">
-                        🔍 Filter
-                    </button>
-                </div>
-            </div>
-        </form>
+@section('content')
+    <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+            <p class="text-sm text-slate-500">View biometric attendance records and manage DTR</p>
+        </div>
     </div>
 
-    @if($records->isEmpty())
-        <div class="bg-white rounded-lg shadow p-8 text-center">
-            <p class="text-slate-600">No records found.</p>
+    <article class="rounded-xl border border-slate-300 bg-white p-3 shadow-sm mt-4">
+        <div class="grid grid-cols-1 gap-2 md:grid-cols-3">
+            <form method="GET" action="{{ route('admin.dtr.index') }}" class="md:col-span-3">
+                <div class="flex flex-col gap-2 lg:flex-row">
+                    <input type="text" name="search" value="{{ request('search') ?? '' }}" placeholder="Search by name, email, ID, or department..."
+                           class="flex-1 rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-blue-400 focus:outline-none">
+
+                    <select name="period" onchange="
+                        var parts = this.value.split('-');
+                        var first = new Date(parts[1], parts[0]-1, 1);
+                        var last = new Date(parts[1], parts[0], 0);
+                        this.form.querySelector('[name=date_from]').value = first.toISOString().slice(0,10);
+                        this.form.querySelector('[name=date_to]').value = last.toISOString().slice(0,10);
+                        this.form.submit();
+                    " class="rounded-md border border-slate-300 bg-white px-4 py-2 text-sm focus:border-blue-400 focus:outline-none lg:w-56">
+                        @foreach(collect(range(0,11))->map(fn($offset) => now()->startOfMonth()->subMonths($offset))->values() as $d)
+                            <option value="{{ $d->month }}-{{ $d->year }}" @selected($d->month == $dateFrom->month && $d->year == $dateFrom->year)>{{ $d->format('F Y') }}</option>
+                        @endforeach
+                    </select>
+
+                    <select name="employee_class" onchange="this.form.submit()" class="rounded-md border border-slate-300 bg-white px-4 py-2 text-sm focus:border-blue-400 focus:outline-none lg:min-w-[14rem]">
+                        <option value="all">All Employee Types</option>
+                        <option value="regular" @selected(request('employee_class') === 'regular')>Regular Employees</option>
+                        <option value="irregular" @selected(request('employee_class') === 'irregular')>Non-Regular Employee</option>
+                    </select>
+
+                    <input type="hidden" name="date_from" value="{{ $dateFrom?->format('Y-m-d') }}">
+                    <input type="hidden" name="date_to" value="{{ $dateTo?->format('Y-m-d') }}">
+                </div>
+            </form>
         </div>
-    @else
-        <div class="bg-white rounded-lg shadow overflow-hidden">
-            <table class="w-full">
-                <thead class="bg-slate-50 border-b border-slate-200">
-                    <tr>
-                        <th class="px-6 py-3 text-left text-sm font-semibold text-slate-900">Employee</th>
-                        <th class="px-6 py-3 text-left text-sm font-semibold text-slate-900">Date</th>
-                        <th class="px-6 py-3 text-left text-sm font-semibold text-slate-900">Time In</th>
-                        <th class="px-6 py-3 text-left text-sm font-semibold text-slate-900">Time Out</th>
-                        <th class="px-6 py-3 text-left text-sm font-semibold text-slate-900">Status</th>
-                        <th class="px-6 py-3 text-left text-sm font-semibold text-slate-900">Actions</th>
-                    </tr>
-                </thead>
-                <tbody class="divide-y divide-slate-200">
-                    @foreach($records as $record)
-                        <tr class="hover:bg-slate-50 transition">
-                            <td class="px-6 py-4 text-sm font-medium text-slate-900">{{ $record->employee?->full_name ?? 'N/A' }}</td>
-                            <td class="px-6 py-4 text-sm text-slate-600">{{ $record->record_date->format('M d, Y') }}</td>
-                            <td class="px-6 py-4 text-sm text-slate-600">{{ $record->time_in ?? 'N/A' }}</td>
-                            <td class="px-6 py-4 text-sm text-slate-600">{{ $record->time_out ?? 'N/A' }}</td>
-                            <td class="px-6 py-4 text-sm">
-                                <span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold
-                                    @if($record->status === 'present') bg-green-100 text-green-800
-                                    @elseif($record->status === 'absent') bg-red-100 text-red-800
-                                    @else bg-yellow-100 text-yellow-800
-                                    @endif">
-                                    {{ ucfirst($record->status) }}
-                                </span>
-                            </td>
-                            <td class="px-6 py-4 text-sm">
-                                <a href="{{ route('admin.dtr.edit', $record->id) }}" class="text-blue-600 hover:text-blue-700 font-medium">Edit</a>
-                            </td>
-                        </tr>
-                    @endforeach
-                </tbody>
-            </table>
-        </div>
-    @endif
-</div>
+    </article>
+
+    <div class="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3 mt-4">
+        @forelse($employeeCards as $card)
+            <article class="rounded-xl border border-slate-300 bg-white p-4 shadow-sm transition hover:shadow-md">
+                <div class="mb-4 flex items-center justify-between">
+                    <div class="flex items-center gap-3">
+                        <span class="inline-flex h-10 w-10 items-center justify-center rounded-full bg-[#00386f] text-sm font-semibold text-white">{{ $card['initials'] }}</span>
+                        <div>
+                            <p class="text-xl font-bold text-[#1f2b5d]">{{ $card['name'] }}</p>
+                            <p class="text-sm text-slate-500">{{ $card['department'] }}</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="grid grid-cols-2 gap-3">
+                    <div class="rounded-lg bg-emerald-100 p-3 text-center">
+                        <p class="text-4xl font-extrabold text-emerald-700">{{ $card['present'] }}</p>
+                        <p class="text-xs font-semibold text-emerald-700">Present</p>
+                    </div>
+                    <div class="rounded-lg bg-amber-100 p-3 text-center">
+                        <p class="text-4xl font-extrabold text-amber-700">{{ $card['tardiness'] }}</p>
+                        <p class="text-xs font-semibold text-amber-700">Tardiness(min)</p>
+                    </div>
+                </div>
+                <div class="mt-3">
+                    <span class="inline-flex items-center rounded-full bg-red-100 px-2.5 py-1 text-[11px] font-semibold text-red-800">Absences: {{ $card['absences'] }}</span>
+                </div>
+                @unless($card['has_data'])
+                    <p class="mt-3 rounded-md border border-dashed border-slate-300 bg-slate-50 px-2 py-1 text-center text-[11px] text-slate-500">No biometric data yet for this period.</p>
+                @endunless
+                <p class="mt-3 text-xs text-slate-500">Schedule: {{ $card['schedule_summary'] }}</p>
+                <a href="{{ route('admin.dtr.index', ['employee_id' => $card['id'], 'date_from' => $dateFrom?->format('Y-m-d'), 'date_to' => $dateTo?->format('Y-m-d')]) }}" class="mt-3 block w-full rounded-md bg-[#00386f] px-3 py-2 text-center text-sm font-semibold text-white hover:bg-[#002f5d] transition">View DTR</a>
+            </article>
+        @empty
+            <div class="col-span-full rounded-xl border border-slate-200 bg-white p-8 text-center">
+                <p class="text-lg font-semibold text-slate-500">No employees found</p>
+                <p class="text-sm text-slate-400">Try adjusting your search or filter criteria.</p>
+            </div>
+        @endforelse
+    </div>
 @endsection

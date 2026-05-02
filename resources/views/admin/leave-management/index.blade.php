@@ -113,7 +113,7 @@
 
     <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
         @forelse ($leaveCards as $card)
-            <article data-faculty-card data-name="{{ $card['name'] }}" data-department="{{ $card['department'] }}" data-remaining="{{ $card['remaining'] }}" data-used="{{ $card['used'] }}" data-vacation-remaining="{{ $card['vacation_remaining'] ?? 0 }}" data-vacation-used="{{ $card['vacation_used'] ?? 0 }}" data-sick-remaining="{{ $card['sick_remaining'] ?? 0 }}" data-sick-used="{{ $card['sick_used'] ?? 0 }}" data-emergency-remaining="{{ $card['emergency_remaining'] ?? 0 }}" data-emergency-used="{{ $card['emergency_used'] ?? 0 }}" class="rounded-xl border border-slate-300 bg-white p-4 shadow-sm transition hover:shadow-md">
+            <article data-faculty-card data-name="{{ $card['name'] }}" data-department="{{ $card['department'] }}" data-remaining="{{ $card['remaining'] }}" data-used="{{ $card['used'] }}" data-vacation-remaining="{{ $card['vacation_remaining'] ?? 0 }}" data-vacation-used="{{ $card['vacation_used'] ?? 0 }}" data-sick-remaining="{{ $card['sick_remaining'] ?? 0 }}" data-sick-used="{{ $card['sick_used'] ?? 0 }}" data-emergency-remaining="{{ $card['emergency_remaining'] ?? 0 }}" data-emergency-used="{{ $card['emergency_used'] ?? 0 }}" data-absences="{{ $card['absences'] ?? 0 }}" class="rounded-xl border border-slate-300 bg-white p-4 shadow-sm transition hover:shadow-md">
                 <div class="mb-3 flex items-center justify-between">
                     <div class="flex items-center gap-3 cursor-pointer" data-open-leave-detail>
                         <span class="inline-flex h-10 w-10 items-center justify-center rounded-full bg-[#00386f] text-sm font-semibold text-white">{{ $card['initials'] }}</span>
@@ -132,6 +132,9 @@
                     @endif
                     @if (($card['emergency_used'] ?? 0) > 0)
                         <span class="inline-flex items-center rounded-full bg-violet-100 px-2.5 py-1 text-[11px] font-semibold text-violet-800">EL: {{ rtrim(rtrim(number_format($card['emergency_used'], 2), '0'), '.') }}</span>
+                    @endif
+                    @if (($card['absences'] ?? 0) > 0)
+                        <span class="inline-flex items-center rounded-full bg-red-100 px-2.5 py-1 text-[11px] font-semibold text-red-800">Absences: {{ $card['absences'] }}</span>
                     @endif
                     @if (($card['employee_status'] ?? 'non-regular') === 'non-regular' && (($card['vacation_used'] ?? 0) > 0 || ($card['sick_used'] ?? 0) > 0 || ($card['emergency_used'] ?? 0) > 0))
                         <span class="inline-flex items-center rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-semibold text-slate-700">Tracked for non-regular employee</span>
@@ -240,6 +243,9 @@
                     </article>
                 </div>
             </div>
+            <div class="px-7 pb-7">
+                <p class="text-sm text-slate-500">Absences (current year): <span id="leave-absences" class="font-semibold text-slate-700">0</span></p>
+            </div>
         </div>
     </div>
 
@@ -298,6 +304,9 @@
                 document.getElementById('leave-sick-used').textContent = formatNumber(card.dataset.sickUsed);
                 document.getElementById('leave-emergency-remaining').textContent = formatNumber(card.dataset.emergencyRemaining);
                 document.getElementById('leave-emergency-used').textContent = formatNumber(card.dataset.emergencyUsed);
+                const abs = card.dataset.absences || 0;
+                const absEl = document.getElementById('leave-absences');
+                if (absEl) { absEl.textContent = abs; }
                 const m = document.getElementById('leave-details-modal'); m.classList.remove('hidden'); m.classList.add('flex'); document.body.classList.add('overflow-hidden');
             });
         });

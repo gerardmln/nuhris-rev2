@@ -156,6 +156,9 @@
                         <p class="text-xs font-semibold text-amber-700">Tardiness(min)</p>
                     </div>
                 </div>
+                <div class="mt-3">
+                    <span class="inline-flex items-center rounded-full bg-red-100 px-2.5 py-1 text-[11px] font-semibold text-red-800">Absences: {{ $card['absences'] ?? 0 }}</span>
+                </div>
                 @unless ($card['has_data'])
                     <p class="mt-3 rounded-md border border-dashed border-slate-300 bg-slate-50 px-2 py-1 text-center text-[11px] text-slate-500">
                         No biometric data yet — upload a Timesheet PDF to populate.

@@ -23,6 +23,11 @@
                 <p class="text-xl font-bold text-slate-900">{{ $record->employee?->full_name ?? 'N/A' }}</p>
             </div>
 
+            <div class="mb-6 p-4 bg-red-50 rounded-lg border border-red-200">
+                <p class="text-sm font-medium text-red-600">Absences ({{ $record->record_date->format('F Y') }})</p>
+                <p class="text-xl font-bold text-red-700">{{ $absenceCount ?? 0 }}</p>
+            </div>
+
             <!-- Time In -->
             <div class="mb-6">
                 <label for="time_in" class="block text-sm font-medium text-slate-900 mb-2">Time In (HH:MM)</label>

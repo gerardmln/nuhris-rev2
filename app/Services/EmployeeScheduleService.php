@@ -3,9 +3,12 @@
 namespace App\Services;
 
 use App\Models\Employee;
+use App\Models\AttendanceRecord;
 use App\Models\EmployeeScheduleDay;
 use App\Models\EmployeeScheduleSubmission;
 use Carbon\Carbon;
+use Carbon\CarbonPeriod;
+use Illuminate\Support\Collection;
 
 class EmployeeScheduleService
 {
@@ -181,6 +184,58 @@ class EmployeeScheduleService
         }
 
         return implode(' | ', $parts);
+    }
+
+    public function countDtrAbsences(Employee $employee, Carbon $startDate, Carbon $endDate): int
+    {
+        $periodStart = $startDate->copy()->startOfDay();
+        $periodEnd = $endDate->copy()->startOfDay();
+
+        if ($periodEnd->lt($periodStart)) {
+            return 0;
+        }
+
+        $attendanceRecords = AttendanceRecord::query()
+            ->where('employee_id', $employee->id)
+            ->whereBetween('record_date', [$periodStart->toDateString(), $periodEnd->toDateString()])
+            ->get()
+            ->keyBy(fn (AttendanceRecord $record) => $record->record_date->toDateString());
+
+        $submission = $this->approvedSubmissionForDate($employee, $periodStart);
+        $absences = 0;
+
+        foreach (CarbonPeriod::create($periodStart, $periodEnd) as $date) {
+            if ($date->isAfter(now())) {
+                continue;
+            }
+
+            if ($date->dayOfWeekIso === 7) {
+                continue;
+            }
+
+            if ($submission) {
+                $scheduleDay = $submission->days->firstWhere('day_index', $date->dayOfWeekIso);
+
+                if ($scheduleDay && ! $scheduleDay->has_work) {
+                    continue;
+                }
+            }
+
+            $dateKey = $date->toDateString();
+
+            if (! $attendanceRecords->has($dateKey)) {
+                $absences++;
+                continue;
+            }
+
+            $record = $attendanceRecords->get($dateKey);
+
+            if ($record->status === 'absent' && ! in_array($record->schedule_status, ['non_working_day', 'no_schedule'], true)) {
+                $absences++;
+            }
+        }
+
+        return $absences;
     }
 
     private function normalizeTimeInput(mixed $value): ?string
