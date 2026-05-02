@@ -17,6 +17,7 @@ class SupabaseStorageService
     protected string $baseUrl;
     protected string $serviceKey;
     protected string $bucket;
+    protected bool $enabled = true;
 
     public function __construct()
     {
@@ -25,7 +26,10 @@ class SupabaseStorageService
         $this->bucket = (string) env('SUPABASE_STORAGE_BUCKET', 'credentials');
 
         if ($this->baseUrl === '' || $this->serviceKey === '') {
-            throw new RuntimeException('Supabase storage is not configured. Set SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY in .env.');
+            // Do not throw here — allow the application to run without Supabase configured.
+            // Methods will check `enabled` and fail gracefully.
+            $this->enabled = false;
+            return;
         }
     }
 
@@ -34,6 +38,10 @@ class SupabaseStorageService
      */
     public function uploadFile(UploadedFile $file, string $directory = ''): string
     {
+        if (! $this->enabled) {
+            throw new RuntimeException('Supabase storage is not configured. Unable to upload file.');
+        }
+
         $directory = trim($directory, '/');
         $filename = time() . '_' . bin2hex(random_bytes(4)) . '.' . $file->getClientOriginalExtension();
         $path = $directory === '' ? $filename : "{$directory}/{$filename}";
@@ -59,6 +67,10 @@ class SupabaseStorageService
      */
     public function createSignedUrl(string $path, int $expiresIn = 3600): ?string
     {
+        if (! $this->enabled) {
+            return null;
+        }
+
         $path = ltrim($path, '/');
 
         $response = Http::withHeaders([
@@ -87,6 +99,10 @@ class SupabaseStorageService
      */
     public function delete(string $path): bool
     {
+        if (! $this->enabled) {
+            return false;
+        }
+
         $path = ltrim($path, '/');
 
         $response = Http::withHeaders([
@@ -100,5 +116,10 @@ class SupabaseStorageService
     public function bucket(): string
     {
         return $this->bucket;
+    }
+
+    public function isEnabled(): bool
+    {
+        return $this->enabled;
     }
 }

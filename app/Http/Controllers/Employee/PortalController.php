@@ -13,6 +13,7 @@ use App\Models\EmployeeCredential;
 use App\Models\EmployeeScheduleSubmission;
 use App\Models\User;
 use App\Services\EmployeeScheduleService;
+use App\Services\LeaveBalanceService;
 use App\Services\SupabaseStorageService;
 use Illuminate\Http\Request;
 use Illuminate\Http\RedirectResponse;
@@ -172,6 +173,10 @@ class PortalController extends Controller
         $originalFilename = null;
 
         if ($request->hasFile('credential_file')) {
+            if (! $storage->isEnabled()) {
+                return back()->withInput()->with('error', 'File storage is not configured. Please contact the administrator.');
+            }
+
             try {
                 $filePath = $storage->uploadFile($request->file('credential_file'), 'employee-'.$employee->id);
                 $originalFilename = $request->file('credential_file')->getClientOriginalName();
@@ -275,6 +280,10 @@ class PortalController extends Controller
             return back()->with('error', 'No file was attached to this credential.');
         }
 
+        if (! $storage->isEnabled()) {
+            return back()->with('error', 'File storage is not configured. Please contact the administrator.');
+        }
+
         $url = $storage->createSignedUrl($credential->file_path, 300);
 
         if (! $url) {
@@ -310,7 +319,7 @@ class PortalController extends Controller
             }
         });
 
-        if ($filePath) {
+        if ($filePath && $storage->isEnabled()) {
             $storage->delete($filePath);
         }
 
@@ -499,17 +508,20 @@ class PortalController extends Controller
         return back()->with('success', 'Your weekly schedule was submitted to HR for approval.');
     }
 
-    public function leave(Request $request): View
+    public function leave(Request $request, LeaveBalanceService $leaveBalanceService): View
     {
         $employee = Employee::query()->where('email', $request->user()->email)->first();
 
-        $leaveBalances = $employee
-            ? $employee->leaveBalances()->orderBy('leave_type')->get()->map(fn ($row) => [
-                'type' => $row->leave_type,
-                'remaining' => rtrim(rtrim(number_format($row->remaining_days, 2, '.', ''), '0'), '.'),
-            ])->values()
+        // Get deductible leave balances (VL, SL, EL only)
+        $deductibleBalances = $employee
+            ? $leaveBalanceService->getDeductibleLeaveBalances($employee)
+                ->map(fn ($balance) => [
+                    'type' => $balance['type'],
+                    'remaining' => rtrim(rtrim(number_format($balance['remaining'], 2, '.', ''), '0'), '.'),
+                ])->values()
             : collect();
 
+        // Get all leave history
         $leaveHistory = $employee
             ? $employee->leaveRequests()->latest('start_date')->get()->map(fn ($row) => [
                 'type' => $row->leave_type,
@@ -522,7 +534,15 @@ class PortalController extends Controller
             ])->values()
             : collect();
 
-        // Calculate used days for each leave type from approved requests only
+        // Get detailed leave usage breakdown (deductible vs tracked-only)
+        $leaveUsageBreakdown = $employee
+            ? $leaveBalanceService->getLeaveUsageBreakdown($employee)
+            : [
+                'deductible' => [],
+                'tracked_only' => [],
+            ];
+
+        // For backward compatibility, also provide simple usage counts
         $leaveUsage = [
             'vacation_used' => 0,
             'sick_used' => 0,
@@ -530,28 +550,23 @@ class PortalController extends Controller
         ];
 
         if ($employee) {
-            $approvedRequests = $employee->leaveRequests()
-                ->where('status', 'approved')
-                ->get();
-
-            foreach ($approvedRequests as $request) {
-                $leaveType = strtolower((string) $request->leave_type);
-                $days = (float) $request->days_deducted;
-
-                if (str_contains($leaveType, 'vacation')) {
-                    $leaveUsage['vacation_used'] += $days;
-                } elseif (str_contains($leaveType, 'sick')) {
-                    $leaveUsage['sick_used'] += $days;
-                } elseif (str_contains($leaveType, 'emergency')) {
-                    $leaveUsage['emergency_used'] += $days;
+            foreach ($leaveUsageBreakdown['deductible'] as $usage) {
+                if (str_contains(strtolower($usage['type']), 'vacation')) {
+                    $leaveUsage['vacation_used'] += $usage['days_used'];
+                } elseif (str_contains(strtolower($usage['type']), 'sick')) {
+                    $leaveUsage['sick_used'] += $usage['days_used'];
+                } elseif (str_contains(strtolower($usage['type']), 'emergency')) {
+                    $leaveUsage['emergency_used'] += $usage['days_used'];
                 }
             }
         }
 
         return view('employee.leave', [
-            'leaveBalances' => $leaveBalances,
+            'leaveBalances' => $deductibleBalances,
             'leaveHistory' => $leaveHistory,
             'leaveUsage' => $leaveUsage,
+            'leaveUsageBreakdown' => $leaveUsageBreakdown,
+            'employee' => $employee,
         ]);
     }
 

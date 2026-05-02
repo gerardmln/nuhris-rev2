@@ -11,6 +11,7 @@ use App\Models\Employee;
 use App\Models\EmployeeCredential;
 use App\Models\LeaveRequest;
 use App\Models\User;
+use App\Models\WfhMonitoringSubmission;
 use App\Services\EmployeeScheduleService;
 use App\Services\LeaveMonitoringService;
 use App\Services\SupabaseStorageService;
@@ -117,6 +118,10 @@ class OperationsController extends Controller
     {
         if (! $credential->file_path) {
             return back()->with('error', 'No file was attached to this credential.');
+        }
+
+        if (! $storage->isEnabled()) {
+            return back()->with('error', 'File storage is not configured. Please contact the administrator.');
         }
 
         $url = $storage->createSignedUrl($credential->file_path, 300);
@@ -451,11 +456,11 @@ class OperationsController extends Controller
         $departmentId = $request->string('department_id')->toString();
         $employeeClass = $request->string('employee_class')->toString() ?: 'all';
         $leaveMonitoringService = app(LeaveMonitoringService::class);
+        $leaveBalanceService = app(\App\Services\LeaveBalanceService::class);
 
         $employeesQuery = Employee::query()
             ->with([
                 'department',
-                'leaveBalances',
                 'leaveRequests',
             ])
             ->when($search, function ($query, $searchTerm) {
@@ -482,6 +487,12 @@ class OperationsController extends Controller
         $leaveMonitoringService->applyEmployeeClassFilter($employeesQuery, $employeeClass);
 
         $employees = $employeesQuery->get();
+
+        $employees->each(function (Employee $employee) use ($leaveBalanceService) {
+            $leaveBalanceService->initializeOrUpdateBalance($employee);
+            $employee->unsetRelation('leaveBalances');
+            $employee->load('leaveBalances');
+        });
 
         $leaveCards = $employees->map(function (Employee $employee) {
             $balances = $employee->leaveBalances;
@@ -1154,18 +1165,61 @@ class OperationsController extends Controller
                 continue;
             }
 
-            $rangeLabels = collect($payload['ranges'])
-                ->map(function (array $range) {
-                    /** @var Carbon $start */
-                    $start = $range['start'];
-                    /** @var Carbon $end */
-                    $end = $range['end'];
-                    /** @var string $label */
-                    $label = $range['label'];
+            $ranges = collect($payload['ranges'])->values();
 
-                    $dateLabel = $start->equalTo($end)
-                        ? $start->format('F d, Y')
-                        : $start->format('F d, Y').' to '.$end->format('F d, Y');
+            if ($ranges->isEmpty()) {
+                continue;
+            }
+
+            /** @var Carbon $minStart */
+            $minStart = $ranges->min(fn (array $range) => $range['start']);
+            /** @var Carbon $maxEnd */
+            $maxEnd = $ranges->max(fn (array $range) => $range['end']);
+
+            $existingWfhDates = WfhMonitoringSubmission::query()
+                ->where('employee_id', $employee->id)
+                ->whereBetween('wfh_date', [$minStart->toDateString(), $maxEnd->toDateString()])
+                ->pluck('wfh_date')
+                ->map(fn ($date) => Carbon::parse($date)->toDateString())
+                ->flip();
+
+            // Only notify for dates with no existing WFH submission record.
+            $missingDatesByLabel = [];
+
+            foreach ($ranges as $range) {
+                /** @var Carbon $start */
+                $start = $range['start'];
+                /** @var Carbon $end */
+                $end = $range['end'];
+                /** @var string $label */
+                $label = $range['label'];
+
+                foreach (CarbonPeriod::create($start->copy()->startOfDay(), $end->copy()->startOfDay()) as $date) {
+                    $dateKey = $date->toDateString();
+
+                    if ($existingWfhDates->has($dateKey)) {
+                        continue;
+                    }
+
+                    $missingDatesByLabel[$label][$dateKey] = true;
+                }
+            }
+
+            if (empty($missingDatesByLabel)) {
+                // Submission already exists for all affected dates; skip notification.
+                continue;
+            }
+
+            $rangeLabels = collect($missingDatesByLabel)
+                ->map(function (array $dates, string $label) {
+                    $dateValues = collect(array_keys($dates))
+                        ->sort()
+                        ->values();
+
+                    $dateLabel = $dateValues->count() === 1
+                        ? Carbon::parse($dateValues->first())->format('F d, Y')
+                        : Carbon::parse($dateValues->first())->format('F d, Y')
+                            .' to '.Carbon::parse($dateValues->last())->format('F d, Y');
 
                     return $label.' ('.$dateLabel.')';
                 })
@@ -1208,9 +1262,10 @@ class OperationsController extends Controller
      */
     public function clearLeaves(Request $request): RedirectResponse
     {
-        $deleted = LeaveRequest::query()->delete();
+        $deletedLeaves = LeaveRequest::query()->delete();
+        $deletedBalances = \App\Models\LeaveBalance::query()->delete();
 
-        return back()->with('success', "Cleared {$deleted} leave request(s).");
+        return back()->with('success', "Cleared {$deletedLeaves} leave request(s) and {$deletedBalances} leave balance record(s).");
     }
 
     /**

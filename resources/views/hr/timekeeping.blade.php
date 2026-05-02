@@ -124,7 +124,7 @@
                     <select name="employee_class" onchange="this.form.submit()" class="rounded-md border border-slate-300 bg-white px-4 py-2 text-sm focus:border-blue-400 focus:outline-none lg:min-w-[14rem]">
                         <option value="all" @selected(($employeeClass ?? 'all') === 'all')>All Employee Types</option>
                         <option value="regular" @selected(($employeeClass ?? '') === 'regular')>Regular Employees</option>
-                        <option value="irregular" @selected(($employeeClass ?? '') === 'irregular')>Irregular Employees</option>
+                        <option value="irregular" @selected(($employeeClass ?? '') === 'irregular')>Non-Regular Employee</option>
                     </select>
 
                     <input type="hidden" name="month" value="{{ $selectedMonth ?? now()->month }}">

@@ -93,7 +93,7 @@
                 <select name="employee_class" onchange="this.form.submit()" class="rounded-md border border-slate-300 px-2 py-2 text-sm focus:border-blue-400 focus:outline-none min-w-[14rem]">
                     <option value="all" @selected(($filters['employee_class'] ?? 'all') === 'all')>All Employee Types</option>
                     <option value="regular" @selected(($filters['employee_class'] ?? '') === 'regular')>Regular Employees</option>
-                    <option value="irregular" @selected(($filters['employee_class'] ?? '') === 'irregular')>Irregular Employees</option>
+                    <option value="irregular" @selected(($filters['employee_class'] ?? '') === 'irregular')>Non-Regular Employee</option>
                 </select>
             </form>
         </div>
@@ -101,7 +101,7 @@
 
     <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
         @forelse ($leaveCards as $card)
-            <article data-faculty-card data-name="{{ $card['name'] }}" data-department="{{ $card['department'] }}" data-remaining="{{ $card['remaining'] }}" data-used="{{ $card['used'] }}" class="rounded-xl border border-slate-300 bg-white p-4 shadow-sm transition hover:shadow-md">
+            <article data-faculty-card data-name="{{ $card['name'] }}" data-department="{{ $card['department'] }}" data-remaining="{{ $card['remaining'] }}" data-used="{{ $card['used'] }}" data-vacation-remaining="{{ $card['vacation_remaining'] ?? 0 }}" data-vacation-used="{{ $card['vacation_used'] ?? 0 }}" data-sick-remaining="{{ $card['sick_remaining'] ?? 0 }}" data-sick-used="{{ $card['sick_used'] ?? 0 }}" data-emergency-remaining="{{ $card['emergency_remaining'] ?? 0 }}" data-emergency-used="{{ $card['emergency_used'] ?? 0 }}" class="rounded-xl border border-slate-300 bg-white p-4 shadow-sm transition hover:shadow-md">
                 <div class="mb-3 flex items-center justify-between">
                     <div class="flex items-center gap-3 cursor-pointer" data-open-leave-detail>
                         <span class="inline-flex h-10 w-10 items-center justify-center rounded-full bg-[#00386f] text-sm font-semibold text-white">{{ $card['initials'] }}</span>
@@ -124,9 +124,7 @@
                 </div>
                 <div class="mt-3 flex items-center justify-between text-xs text-slate-500">
                     <span>Total used: <span class="font-semibold text-slate-700">{{ rtrim(rtrim(number_format($card['used'], 2), '0'), '.') }}</span> day(s)</span>
-                    @if ($card['remaining'] > 0)
-                        <span>Remaining: <span class="font-semibold text-slate-700">{{ rtrim(rtrim(number_format($card['remaining'], 2), '0'), '.') }}</span></span>
-                    @endif
+                    <span>Remaining: <span class="font-semibold text-slate-700">{{ rtrim(rtrim(number_format($card['remaining'], 2), '0'), '.') }}</span></span>
                 </div>
             </article>
         @empty
@@ -166,20 +164,57 @@
 
     {{-- Leave Details Modal --}}
     <div id="leave-details-modal" class="fixed inset-0 z-50 hidden items-start justify-center overflow-y-auto bg-black/45 p-4 py-6 sm:items-center">
-        <div class="w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded-2xl bg-white shadow-2xl">
-            <div class="flex items-start justify-between px-7 py-6">
+        <div class="w-full max-w-3xl max-h-[90vh] overflow-y-auto rounded-2xl bg-white shadow-2xl">
+            <div class="flex items-start justify-between px-7 py-6 border-b border-slate-200">
                 <h3 class="text-3xl font-bold text-[#1f2b8b]">Leave Summary - <span id="leave-details-name">Employee</span></h3>
                 <button type="button" data-close-modal class="text-4xl leading-none text-slate-500 hover:text-slate-700">&times;</button>
             </div>
-            <div class="px-7 pb-7">
-                <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                    <article class="rounded-xl border border-slate-300 bg-white p-6 text-center shadow-sm">
-                        <p id="leave-remaining-days" class="text-5xl font-extrabold text-emerald-700">0</p>
-                        <p class="text-xl text-slate-700">Remaining Days</p>
+            <div class="px-7 py-7">
+                <h4 class="text-lg font-bold text-slate-900 mb-4">Leave Balance Breakdown</h4>
+                <div class="grid grid-cols-1 gap-4 mb-6 md:grid-cols-3">
+                    <!-- Vacation Leave -->
+                    <article class="rounded-xl border border-emerald-300 bg-emerald-50 p-5">
+                        <p class="text-xs font-semibold uppercase tracking-wide text-emerald-700 mb-3">Vacation Leave</p>
+                        <div class="space-y-2">
+                            <div>
+                                <p class="text-sm text-emerald-600">Remaining</p>
+                                <p id="leave-vacation-remaining" class="text-3xl font-extrabold text-emerald-700">0</p>
+                            </div>
+                            <div>
+                                <p class="text-sm text-emerald-600">Used</p>
+                                <p id="leave-vacation-used" class="text-2xl font-bold text-emerald-600">0</p>
+                            </div>
+                        </div>
                     </article>
-                    <article class="rounded-xl border border-slate-300 bg-white p-6 text-center shadow-sm">
-                        <p id="leave-used-days" class="text-5xl font-extrabold text-amber-600">0</p>
-                        <p class="text-xl text-slate-700">Days Used</p>
+                    
+                    <!-- Sick Leave -->
+                    <article class="rounded-xl border border-amber-300 bg-amber-50 p-5">
+                        <p class="text-xs font-semibold uppercase tracking-wide text-amber-700 mb-3">Sick Leave</p>
+                        <div class="space-y-2">
+                            <div>
+                                <p class="text-sm text-amber-600">Remaining</p>
+                                <p id="leave-sick-remaining" class="text-3xl font-extrabold text-amber-700">0</p>
+                            </div>
+                            <div>
+                                <p class="text-sm text-amber-600">Used</p>
+                                <p id="leave-sick-used" class="text-2xl font-bold text-amber-600">0</p>
+                            </div>
+                        </div>
+                    </article>
+                    
+                    <!-- Emergency Leave -->
+                    <article class="rounded-xl border border-violet-300 bg-violet-50 p-5">
+                        <p class="text-xs font-semibold uppercase tracking-wide text-violet-700 mb-3">Emergency Leave</p>
+                        <div class="space-y-2">
+                            <div>
+                                <p class="text-sm text-violet-600">Remaining</p>
+                                <p id="leave-emergency-remaining" class="text-3xl font-extrabold text-violet-700">0</p>
+                            </div>
+                            <div>
+                                <p class="text-sm text-violet-600">Used</p>
+                                <p id="leave-emergency-used" class="text-2xl font-bold text-violet-600">0</p>
+                            </div>
+                        </div>
                     </article>
                 </div>
             </div>
@@ -233,9 +268,17 @@
         document.querySelectorAll('[data-open-leave-detail]').forEach(trigger => {
             trigger.addEventListener('click', () => {
                 const card = trigger.closest('[data-faculty-card]');
+                const formatNumber = (val) => {
+                    const num = parseFloat(val) || 0;
+                    return num === 0 ? '0' : num.toString();
+                };
                 document.getElementById('leave-details-name').textContent = card.dataset.name || 'Employee';
-                document.getElementById('leave-remaining-days').textContent = card.dataset.remaining || '0';
-                document.getElementById('leave-used-days').textContent = card.dataset.used || '0';
+                document.getElementById('leave-vacation-remaining').textContent = formatNumber(card.dataset.vacationRemaining);
+                document.getElementById('leave-vacation-used').textContent = formatNumber(card.dataset.vacationUsed);
+                document.getElementById('leave-sick-remaining').textContent = formatNumber(card.dataset.sickRemaining);
+                document.getElementById('leave-sick-used').textContent = formatNumber(card.dataset.sickUsed);
+                document.getElementById('leave-emergency-remaining').textContent = formatNumber(card.dataset.emergencyRemaining);
+                document.getElementById('leave-emergency-used').textContent = formatNumber(card.dataset.emergencyUsed);
                 const m = document.getElementById('leave-details-modal'); m.classList.remove('hidden'); m.classList.add('flex'); document.body.classList.add('overflow-hidden');
             });
         });

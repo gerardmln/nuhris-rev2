@@ -110,6 +110,10 @@ class WfhMonitoringController extends Controller
         $filePath = null;
         $originalFilename = null;
 
+        if (! $storage->isEnabled()) {
+            return back()->withInput()->with('error', 'File storage is not configured. Please contact the administrator.');
+        }
+
         try {
             $file = $request->file('monitoring_file');
             $filePath = $storage->uploadFile($file, 'employee-'.$employee->id.'/wfh-monitoring');
@@ -171,6 +175,10 @@ class WfhMonitoringController extends Controller
 
         if (! $submission->file_path) {
             return back()->with('error', 'No file was attached to this WFH submission.');
+        }
+
+        if (! $storage->isEnabled()) {
+            return back()->with('error', 'File storage is not configured. Please contact the administrator.');
         }
 
         $url = $storage->createSignedUrl($submission->file_path, 300);

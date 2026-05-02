@@ -24,16 +24,75 @@
         </div>
     @endif
 
-    {{-- Leave Balances --}}
+    {{-- Leave Balances (Deductible Only) --}}
     @if (count($leaveBalances) > 0)
-        <div class="grid grid-cols-1 gap-3 md:grid-cols-3">
-            @foreach ($leaveBalances as $balance)
-                <article class="rounded-2xl border border-slate-300 bg-white p-4 shadow-sm">
-                    <p class="text-sm text-slate-500">{{ $balance['type'] }}</p>
-                    <p class="mt-1 text-3xl font-extrabold text-[#1f2b5d]">{{ $balance['remaining'] }}</p>
-                    <p class="text-xs text-slate-500">Remaining days</p>
-                </article>
-            @endforeach
+        <div class="mb-6">
+            <h3 class="mb-3 text-lg font-bold text-slate-900">Remaining Leave Balance</h3>
+            <div class="grid grid-cols-1 gap-3 md:grid-cols-3">
+                @foreach ($leaveBalances as $balance)
+                    <article class="rounded-2xl border border-slate-300 bg-white p-4 shadow-sm">
+                        <p class="text-sm text-slate-500">{{ $balance['type'] }}</p>
+                        <p class="mt-1 text-3xl font-extrabold text-[#1f2b5d]">{{ $balance['remaining'] }}</p>
+                        <p class="text-xs text-slate-500">Remaining days</p>
+                    </article>
+                @endforeach
+            </div>
+        </div>
+    @endif
+
+    {{-- Detailed Leave Usage Breakdown --}}
+    @if (isset($leaveUsageBreakdown))
+        <div class="mb-6 rounded-2xl border border-slate-300 bg-white p-6 shadow-sm">
+            <h3 class="mb-4 text-xl font-bold text-slate-900">Detailed Leave Usage</h3>
+
+            {{-- Deductible Leaves (affect balance) --}}
+            @if (count($leaveUsageBreakdown['deductible']) > 0)
+                <div class="mb-6">
+                    <h4 class="mb-3 text-sm font-semibold uppercase tracking-wide text-emerald-700">Leaves That Affect Balance</h4>
+                    <div class="grid grid-cols-1 gap-2 md:grid-cols-3">
+                        @foreach ($leaveUsageBreakdown['deductible'] as $usage)
+                            @if ($usage['count'] > 0 || $usage['days_used'] > 0)
+                                <div class="rounded-lg border border-emerald-200 bg-emerald-50 p-3">
+                                    <p class="text-sm font-medium text-emerald-900">{{ $usage['type'] }}</p>
+                                    <p class="mt-1 text-2xl font-bold text-emerald-700">{{ rtrim(rtrim(number_format($usage['days_used'], 2, '.', ''), '0'), '.') }}</p>
+                                    <p class="text-xs text-emerald-600">{{ $usage['count'] }} request(s)</p>
+                                </div>
+                            @else
+                                <div class="rounded-lg border border-emerald-200 bg-emerald-50 p-3 opacity-50">
+                                    <p class="text-sm font-medium text-emerald-900">{{ $usage['type'] }}</p>
+                                    <p class="mt-1 text-2xl font-bold text-emerald-700">0</p>
+                                    <p class="text-xs text-emerald-600">No usage</p>
+                                </div>
+                            @endif
+                        @endforeach
+                    </div>
+                </div>
+            @endif
+
+            {{-- Tracked-Only Leaves (do NOT affect balance) --}}
+            @if (count($leaveUsageBreakdown['tracked_only']) > 0)
+                <div>
+                    <h4 class="mb-3 text-sm font-semibold uppercase tracking-wide text-slate-600">Tracked Leaves (Balance Not Affected)</h4>
+                    <div class="grid grid-cols-1 gap-2 md:grid-cols-2 lg:grid-cols-3">
+                        @foreach ($leaveUsageBreakdown['tracked_only'] as $usage)
+                            @if ($usage['count'] > 0)
+                                <div class="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                                    <p class="text-sm font-medium text-slate-900">{{ $usage['type'] }}</p>
+                                    <p class="mt-1 text-xl font-bold text-slate-700">{{ rtrim(rtrim(number_format($usage['days_used'], 2, '.', ''), '0'), '.') }}</p>
+                                    <p class="text-xs text-slate-600">{{ $usage['count'] }} request(s)</p>
+                                </div>
+                            @else
+                                <div class="rounded-lg border border-slate-200 bg-slate-50 p-3 opacity-50">
+                                    <p class="text-sm font-medium text-slate-900">{{ $usage['type'] }}</p>
+                                    <p class="mt-1 text-xl font-bold text-slate-700">0</p>
+                                    <p class="text-xs text-slate-600">No usage</p>
+                                </div>
+                            @endif
+                        @endforeach
+                    </div>
+                    <p class="mt-3 text-xs text-slate-500 italic">Note: These leaves are tracked for record-keeping but do not reduce your leave balance.</p>
+                </div>
+            @endif
         </div>
     @endif
 

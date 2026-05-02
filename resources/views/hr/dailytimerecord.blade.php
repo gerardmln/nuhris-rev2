@@ -42,14 +42,10 @@
             </div>
         </article>
 
-        <div class="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        <div class="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
             <article class="rounded-xl border border-slate-300 bg-white p-4 shadow-sm" data-testid="present-days-card">
                 <p class="text-xs text-slate-500">Present Days</p>
                 <p class="text-3xl font-extrabold text-emerald-700">{{ $summary['present_days'] }}</p>
-            </article>
-            <article class="rounded-xl border border-slate-300 bg-white p-4 shadow-sm" data-testid="absent-days-card">
-                <p class="text-xs text-slate-500">Absent Days</p>
-                <p class="text-3xl font-extrabold text-red-600">{{ $summary['absent_days'] }}</p>
             </article>
             <article class="rounded-xl border border-slate-300 bg-white p-4 shadow-sm" data-testid="tardiness-card">
                 <p class="text-xs text-slate-500">Total Tardiness</p>
