@@ -9,11 +9,6 @@
 @section('content')
     <div class="flex flex-wrap items-center justify-between gap-4">
         <p class="max-w-3xl text-sm text-slate-600">Review submitted Work Output Monitoring Sheets. Approving a sheet will create or update the employee's attendance record for the submitted WFH date.</p>
-        <form method="POST" action="{{ route('wfh-monitoring.clear-all') }}" onsubmit="return confirm('Clear all WFH monitoring records? Attendance records in the DTR will not be deleted.');">
-            @csrf
-            @method('DELETE')
-            <button type="submit" class="rounded-xl border border-red-300 bg-white px-5 py-2 text-sm font-semibold text-red-700 shadow-sm hover:bg-red-50">Clear All WFH Records</button>
-        </form>
     </div>
 
     @if (session('success'))

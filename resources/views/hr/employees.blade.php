@@ -257,41 +257,7 @@
                                                         data-employee-hire-date="{{ $employee->hire_date?->format('Y-m-d') }}"
                                                         @click="open = false"
                                                         class="mb-1 block rounded-lg border border-slate-300 px-3 py-2 text-center text-sm font-semibold text-slate-800 hover:bg-slate-50">View Details</a>
-                                                    <a href="#"
-                                                        data-open-modal="employee-edit-modal"
-                                                        data-employee-id="{{ $employee->id }}"
-                                                        data-employee-employee-id="{{ $employee->employee_id }}"
-                                                        data-employee-first-name="{{ $employee->first_name }}"
-                                                        data-employee-last-name="{{ $employee->last_name }}"
-                                                        data-employee-full-name="{{ $employee->full_name }}"
-                                                        data-employee-email="{{ $employee->email }}"
-                                                        data-employee-phone="{{ $employee->phone }}"
-                                                        data-employee-address="{{ $employee->address }}"
-                                                        data-employee-department-id="{{ $employee->department_id }}"
-                                                        data-employee-department-name="{{ $employee->department?->name }}"
-                                                        data-employee-position="{{ $employee->position }}"
-                                                        data-employee-employment-type="{{ $employee->employment_type }}"
-                                                        data-employee-ranking="{{ $employee->ranking }}"
-                                                        data-employee-status="{{ $employee->status }}"
-                                                        data-employee-hire-date="{{ $employee->hire_date?->format('Y-m-d') }}"
-                                                        @click="open = false"
-                                                        class="mb-1 block rounded-lg border border-slate-300 px-3 py-2 text-center text-sm font-semibold text-slate-800 hover:bg-slate-50">Edit</a>
                                                     <a href="{{ route('employees.profile') }}" @click="open = false" class="mb-1 block rounded-lg border border-slate-300 px-3 py-2 text-center text-sm font-semibold text-slate-800 hover:bg-slate-50">View Profile</a>
-                                                    <form method="POST" action="{{ route('employees.resend-credentials', $employee) }}" @submit="confirmResend($event)">
-                                                        @csrf
-                                                        <button type="submit" :disabled="resending" class="mb-1 flex w-full items-center justify-center gap-2 rounded-lg border border-blue-300 px-3 py-2 text-center text-sm font-semibold text-blue-700 hover:bg-blue-50 disabled:cursor-not-allowed disabled:opacity-60">
-                                                            <svg x-show="resending" class="h-4 w-4 animate-spin" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"></path></svg>
-                                                            <span x-text="resending ? 'Sending…' : 'Resend Credentials'"></span>
-                                                        </button>
-                                                    </form>
-                                                    <form method="POST" action="{{ route('employees.destroy', $employee) }}" @submit="confirmDelete($event)">
-                                                        @csrf
-                                                        @method('DELETE')
-                                                        <button type="submit" :disabled="deleting" class="flex w-full items-center justify-center gap-2 rounded-lg border border-red-300 px-3 py-2 text-center text-sm font-semibold text-red-600 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-60">
-                                                            <svg x-show="deleting" class="h-4 w-4 animate-spin" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"></path></svg>
-                                                            <span x-text="deleting ? 'Deleting…' : 'Delete'"></span>
-                                                        </button>
-                                                    </form>
                                                 </div>
                                             </template>
                                         </div>

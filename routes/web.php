@@ -2,6 +2,11 @@
 
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\Admin\PortalController as AdminPortalController;
+use App\Http\Controllers\Admin\DashboardController as AdminDashboardController;
+use App\Http\Controllers\Admin\OperationsController as AdminOperationsController;
+use App\Http\Controllers\Admin\ScheduleManagementController as AdminScheduleManagementController;
+use App\Http\Controllers\Admin\RoleManagementController;
+use App\Http\Controllers\Admin\ActivityLogsController;
 use App\Http\Controllers\Employee\PortalController as EmployeePortalController;
 use App\Http\Controllers\Employee\WfhMonitoringController as EmployeeWfhMonitoringController;
 use App\Http\Controllers\Hr\AnnouncementController;
@@ -33,9 +38,7 @@ Route::prefix('hr')->middleware(['auth', 'user.type:2'])->group(function () {
 
     Route::put('/employees/{employee}', [EmployeeController::class, 'update'])->whereNumber('employee')->name('employees.update');
 
-    Route::delete('/employees/{employee}', [EmployeeController::class, 'destroy'])->whereNumber('employee')->name('employees.destroy');
-
-    Route::post('/employees/{employee}/resend-credentials', [EmployeeController::class, 'resendCredentials'])->whereNumber('employee')->name('employees.resend-credentials');
+    // Sensitive actions removed for HR: delete and resend credentials are admin-only now.
 
     Route::get('/employees/profile', [OperationsController::class, 'profile'])->name('employees.profile');
 
@@ -62,7 +65,6 @@ Route::prefix('hr')->middleware(['auth', 'user.type:2'])->group(function () {
     Route::get('/timekeeping/daily-time-record/export-excel', [OperationsController::class, 'exportDtrExcel'])->name('timekeeping.dtr.export-excel');
 
     Route::get('/wfh-monitoring', [HrWfhMonitoringController::class, 'index'])->name('wfh-monitoring.index');
-    Route::delete('/wfh-monitoring/clear-all', [HrWfhMonitoringController::class, 'clearAll'])->name('wfh-monitoring.clear-all');
     Route::get('/wfh-monitoring/{submission}/view', [HrWfhMonitoringController::class, 'viewFile'])->whereNumber('submission')->name('wfh-monitoring.view');
     Route::post('/wfh-monitoring/{submission}/approve', [HrWfhMonitoringController::class, 'approve'])->whereNumber('submission')->name('wfh-monitoring.approve');
     Route::post('/wfh-monitoring/{submission}/decline', [HrWfhMonitoringController::class, 'decline'])->whereNumber('submission')->name('wfh-monitoring.decline');
@@ -71,16 +73,10 @@ Route::prefix('hr')->middleware(['auth', 'user.type:2'])->group(function () {
     Route::post('/schedule-management/{submission}/approve', [ScheduleManagementController::class, 'approve'])->whereNumber('submission')->name('schedules.approve');
     Route::post('/schedule-management/{submission}/decline', [ScheduleManagementController::class, 'decline'])->whereNumber('submission')->name('schedules.decline');
     Route::post('/schedule-management/{submission}/clear', [ScheduleManagementController::class, 'clear'])->whereNumber('submission')->name('schedules.clear');
-    Route::post('/schedule-management/employee/{employee}/reset', [ScheduleManagementController::class, 'resetEmployee'])->whereNumber('employee')->name('schedules.employee.reset');
-    Route::post('/schedule-management/reset', [ScheduleManagementController::class, 'resetSemester'])->name('schedules.reset');
 
     Route::get('/leave-management', [OperationsController::class, 'leaveManagement'])->name('leave.index');
 
     Route::post('/leave-management/upload', [OperationsController::class, 'uploadLeaves'])->name('leaves.upload');
-
-    Route::post('/leave-management/clear', [OperationsController::class, 'clearLeaves'])->name('leaves.clear');
-
-    Route::post('/leave-management/clear/{employee}', [OperationsController::class, 'clearEmployeeLeaves'])->whereNumber('employee')->name('leaves.clear-employee');
 
     Route::get('/announcements', [AnnouncementController::class, 'index'])->name('announcements.index');
 
@@ -239,8 +235,68 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'user.type:1'])->gro
         return redirect()->route('admin.dashboard');
     });
 
-    Route::get('/dashboard', [AdminPortalController::class, 'dashboard'])->name('dashboard');
+    Route::get('/dashboard', [AdminDashboardController::class, 'index'])->name('dashboard');
 
+    // ========== CREDENTIAL MANAGEMENT (ADMIN-ONLY) ==========
+    Route::prefix('credentials')->name('credentials.')->group(function () {
+        Route::get('/', [AdminOperationsController::class, 'credentials'])->name('index');
+        Route::get('/{credential}/edit', [AdminOperationsController::class, 'editCredential'])->whereNumber('credential')->name('edit');
+        Route::put('/{credential}', [AdminOperationsController::class, 'updateCredential'])->whereNumber('credential')->name('update');
+        Route::delete('/{credential}', [AdminOperationsController::class, 'deleteCredential'])->whereNumber('credential')->name('destroy');
+        Route::delete('/', [AdminOperationsController::class, 'clearAllCredentials'])->name('clear-all');
+    });
+
+    // ========== DTR / TIMEKEEPING EDITING (ADMIN-ONLY) ==========
+    Route::prefix('dtr')->name('dtr.')->group(function () {
+        Route::get('/', [AdminOperationsController::class, 'dtrIndex'])->name('index');
+        Route::get('/{record}/edit', [AdminOperationsController::class, 'editDtrRecord'])->whereNumber('record')->name('edit');
+        Route::put('/{record}', [AdminOperationsController::class, 'updateDtrRecord'])->whereNumber('record')->name('update');
+    });
+
+    // ========== WFH MANAGEMENT (ADMIN-ONLY) ==========
+    Route::prefix('wfh-monitoring')->name('wfh-monitoring.')->group(function () {
+        Route::get('/', [AdminOperationsController::class, 'wfhIndex'])->name('index');
+        Route::delete('/', [AdminOperationsController::class, 'clearAllWfh'])->name('clear-all');
+    });
+
+    // ========== LEAVE MANAGEMENT (ADMIN-ONLY) ==========
+    Route::prefix('leave-management')->name('leave.')->group(function () {
+        Route::get('/', [AdminOperationsController::class, 'leaveIndex'])->name('index');
+        Route::delete('/', [AdminOperationsController::class, 'clearAllLeaves'])->name('clear-all');
+        Route::delete('/employee/{employee}', [AdminOperationsController::class, 'resetEmployeeLeaves'])->whereNumber('employee')->name('reset-employee');
+    });
+
+    // ========== SCHEDULE MANAGEMENT (ADMIN-ONLY) ==========
+    Route::prefix('schedule-management')->name('schedules.')->group(function () {
+        Route::get('/', [AdminScheduleManagementController::class, 'index'])->name('index');
+        Route::post('/{submission}/approve', [AdminScheduleManagementController::class, 'approve'])->whereNumber('submission')->name('approve');
+        Route::post('/{submission}/decline', [AdminScheduleManagementController::class, 'decline'])->whereNumber('submission')->name('decline');
+        Route::delete('/employee/{employee}', [AdminScheduleManagementController::class, 'resetEmployee'])->whereNumber('employee')->name('employee.reset');
+        Route::delete('/', [AdminScheduleManagementController::class, 'resetAll'])->name('reset-all');
+    });
+
+    // ========== ROLE MANAGEMENT ==========
+    Route::prefix('roles')->name('roles.')->group(function () {
+        Route::get('/', [RoleManagementController::class, 'index'])->name('index');
+        Route::put('/{user}', [RoleManagementController::class, 'updateRole'])->whereNumber('user')->name('update');
+    });
+
+    // ========== ACTIVITY LOGS (PLACEHOLDER) ==========
+    Route::prefix('activity-logs')->name('activity-logs.')->group(function () {
+        Route::get('/', [ActivityLogsController::class, 'index'])->name('index');
+    });
+
+    // ========== ADMIN EMPLOYEES ==========
+    Route::prefix('employees')->name('employees.')->group(function () {
+        Route::get('/', [\App\Http\Controllers\Admin\EmployeeController::class, 'index'])->name('index');
+        Route::get('/{employee}', [\App\Http\Controllers\Admin\EmployeeController::class, 'show'])->whereNumber('employee')->name('show');
+        Route::get('/{employee}/edit', [\App\Http\Controllers\Admin\EmployeeController::class, 'edit'])->whereNumber('employee')->name('edit');
+        Route::put('/{employee}', [\App\Http\Controllers\Admin\EmployeeController::class, 'update'])->whereNumber('employee')->name('update');
+        Route::delete('/{employee}', [\App\Http\Controllers\Admin\EmployeeController::class, 'destroy'])->whereNumber('employee')->name('destroy');
+        Route::post('/{employee}/resend-credentials', [\App\Http\Controllers\Admin\EmployeeController::class, 'resendCredentials'])->whereNumber('employee')->name('resend-credentials');
+    });
+
+    // ========== LEGACY ADMIN ROUTES (KEPT FOR BACKWARD COMPATIBILITY) ==========
     Route::get('/user-management/accounts', [AdminPortalController::class, 'userAccounts'])->name('users.accounts');
 
     Route::delete('/user-management/accounts/{user}', [AdminPortalController::class, 'destroyUser'])->whereNumber('user')->name('users.accounts.destroy');

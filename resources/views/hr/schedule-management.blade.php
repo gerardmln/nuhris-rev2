@@ -18,11 +18,6 @@
                 <h2 class="mt-1 text-3xl font-bold text-slate-900">Schedule Management</h2>
                 <p class="mt-1 text-sm text-slate-600">Review employee-submitted weekly schedules before they become the attendance reference.</p>
             </div>
-            <form method="POST" action="{{ route('schedules.reset') }}" onsubmit="return confirm('Reset all schedules? Employees will need to resubmit.');">
-                @csrf
-                <input type="hidden" name="confirmed" value="1">
-                <button type="submit" class="rounded-md border border-red-300 bg-white px-4 py-2 text-sm font-semibold text-red-700 hover:bg-red-50">Reset Schedule</button>
-            </form>
         </div>
     </div>
 
@@ -102,14 +97,6 @@
                             <input type="hidden" name="confirmed" value="1">
                             <input type="hidden" name="review_notes" value="Cleared by HR">
                             <button type="submit" class="rounded-md bg-slate-800 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-900">Clear</button>
-                        </form>
-                    @endif
-
-                    @if ($submission)
-                        <form method="POST" action="{{ route('schedules.employee.reset', $employee) }}" onsubmit="return confirm('Reset all schedules for {{ $employee->full_name }}? They will need to resubmit.');">
-                            @csrf
-                            <input type="hidden" name="confirmed" value="1">
-                            <button type="submit" class="rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50">Reset Employee</button>
                         </form>
                     @endif
                 </div>
