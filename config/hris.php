@@ -3,10 +3,12 @@
 return [
     'employment_types' => [
         'Faculty',
+        'Part-Time Faculty',
         'Admin Support Personnel',
     ],
 
     'faculty_positions' => [
+        'Part-Time Faculty',
         'Instructor',
         'Assistant Professor',
         'Associate Professor',

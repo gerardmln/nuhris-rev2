@@ -31,14 +31,19 @@ class StoreEmployeeRequest extends FormRequest
 
         $employmentType = Str::lower((string) $this->input('employment_type'));
         $selectedPosition = Str::lower((string) $this->input('position'));
-        $requiresDepartment = Str::contains($selectedPosition, ['professor', 'dean', 'program chair']);
+        $isPartTimeFaculty = $employmentType === 'part-time faculty';
+        $requiresDepartment = $isPartTimeFaculty || Str::contains($selectedPosition, ['professor', 'dean', 'program chair']);
         $allowedRankings = $this->allowedRankingsForPosition($selectedPosition, $rankings);
         $requiresRanking = ! empty($allowedRankings);
 
         // Scope the allowed positions by the selected employment type so HR
         // cannot save an ASP office when employment_type=Faculty (and vice-versa).
         $allowedPositions = match (true) {
-            str_contains($employmentType, 'faculty') => $facultyPositions,
+            $isPartTimeFaculty => ['Part-Time Faculty'],
+            str_contains($employmentType, 'faculty') => array_values(array_filter(
+                $facultyPositions,
+                fn ($position) => $position !== 'Part-Time Faculty'
+            )),
             str_contains($employmentType, 'admin') => $aspPositions,
             default => $allPositions,
         };

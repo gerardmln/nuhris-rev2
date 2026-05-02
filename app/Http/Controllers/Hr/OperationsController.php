@@ -1526,18 +1526,25 @@ class OperationsController extends Controller
         $period = CarbonPeriod::create($baseDate->copy()->startOfMonth(), $baseDate->copy()->endOfMonth());
 
         $dbRecords = collect();
+        $scheduleService = app(EmployeeScheduleService::class);
+        $approvedSubmission = null;
+
         if ($employee) {
             $dbRecords = AttendanceRecord::where('employee_id', $employee->id)
                 ->whereBetween('record_date', [$baseDate->copy()->startOfMonth(), $baseDate->copy()->endOfMonth()])
                 ->get()
                 ->keyBy(fn ($r) => $r->record_date->format('Y-m-d'));
+
+            $approvedSubmission = $scheduleService->approvedSubmissionForDate($employee, $baseDate);
         }
 
         return collect($period)
-            ->map(function (Carbon $date, int $index) use ($employee, $dbRecords) {
+            ->map(function (Carbon $date, int $index) use ($employee, $dbRecords, $scheduleService, $approvedSubmission) {
                 $dateKey = $date->format('Y-m-d');
+                $dayOfWeekIso = $date->dayOfWeekIso; // 1=Monday, 7=Sunday
 
-                if ($date->isWeekend()) {
+                // Sunday is always a calendar weekend (not in employee schedule 1-6)
+                if ($dayOfWeekIso === 7) {
                     return [
                         'date' => $date->format('M j'),
                         'day' => $date->format('D'),
@@ -1547,6 +1554,24 @@ class OperationsController extends Controller
                         'undertime_minutes' => 0,
                         'status' => 'Weekend',
                     ];
+                }
+
+                // For Monday-Saturday (dayOfWeekIso 1-6), check employee's approved schedule
+                if ($employee && $approvedSubmission) {
+                    $scheduleDay = $approvedSubmission->days->firstWhere('day_index', $dayOfWeekIso);
+
+                    // If schedule explicitly marks this day as non-working, show it even if no attendance record exists
+                    if ($scheduleDay && !$scheduleDay->has_work) {
+                        return [
+                            'date' => $date->format('M j'),
+                            'day' => $date->format('D'),
+                            'time_in' => '-',
+                            'time_out' => '-',
+                            'tardiness_minutes' => 0,
+                            'undertime_minutes' => 0,
+                            'status' => 'Non-working day',
+                        ];
+                    }
                 }
 
                 if ($dbRecords->has($dateKey)) {
