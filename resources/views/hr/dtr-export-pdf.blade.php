@@ -80,7 +80,7 @@
                     <td>{{ $record['time_out'] }}</td>
                     <td>{{ $record['tardiness_minutes'] ? $record['tardiness_minutes'].' min' : '-' }}</td>
                     <td>{{ $record['undertime_minutes'] ? $record['undertime_minutes'].' min' : '-' }}</td>
-                    <td class="{{ $record['status'] === 'Weekend' ? 'weekend' : ($record['status'] === 'Absent' ? 'absent' : 'present') }}">
+                    <td class="{{ $record['status'] === 'Weekend' ? 'weekend' : ($record['status'] === 'Not Present' ? 'absent' : 'present') }}">
                         {{ $record['status'] }}
                     </td>
                 </tr>

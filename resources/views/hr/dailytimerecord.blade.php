@@ -92,7 +92,7 @@
                 </thead>
                 <tbody class="divide-y divide-slate-200">
                     @foreach ($records as $record)
-                        <tr class="{{ $record['status'] === 'Weekend' ? 'bg-slate-50 text-slate-400' : ($record['status'] === 'Non-working day' ? 'bg-amber-50/40' : ($record['status'] === 'Absent' ? 'bg-red-50/40' : '')) }}">
+                        <tr class="{{ $record['status'] === 'Weekend' ? 'bg-slate-50 text-slate-400' : ($record['status'] === 'Non-working day' ? 'bg-amber-50/40' : ($record['status'] === 'Not Present' ? 'bg-red-50/40' : '')) }}">
                             <td class="px-3 py-2">{{ $record['date'] }}</td>
                             <td class="px-3 py-2">{{ $record['day'] }}</td>
                             <td class="px-3 py-2">{{ $record['time_in'] }}</td>
@@ -102,8 +102,8 @@
                             <td class="px-3 py-2">
                                 @if($record['status'] === 'Present')
                                     <span class="inline-flex rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-semibold text-emerald-700">Present</span>
-                                @elseif($record['status'] === 'Absent')
-                                    <span class="inline-flex rounded-full bg-red-100 px-2 py-0.5 text-xs font-semibold text-red-700">Absent</span>
+                                @elseif($record['status'] === 'Not Present')
+                                    <span class="inline-flex rounded-full bg-red-100 px-2 py-0.5 text-xs font-semibold text-red-700">Not Present</span>
                                 @elseif($record['status'] === 'Non-working day')
                                     <span class="inline-flex rounded-full bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-700">Non-working day</span>
                                 @elseif($record['status'] === 'Weekend')

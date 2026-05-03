@@ -14,6 +14,7 @@ use App\Models\User;
 use App\Models\WfhMonitoringSubmission;
 use App\Services\EmployeeScheduleService;
 use App\Services\LeaveMonitoringService;
+use App\Services\LeaveBalanceService;
 use App\Services\SupabaseStorageService;
 use Carbon\Carbon;
 use Carbon\CarbonPeriod;
@@ -353,7 +354,7 @@ class OperationsController extends Controller
 
         $summary = [
             'present_days' => $records->where('status', 'Present')->count(),
-            'absent_days' => $records->where('status', 'Absent')->count(),
+            'absent_days' => $records->where('status', 'Not Present')->count(),
             'tardiness_total' => $records->sum('tardiness_minutes'),
             'undertime_total' => $records->sum('undertime_minutes'),
         ];
@@ -396,7 +397,7 @@ class OperationsController extends Controller
         $records = $this->buildAttendanceRows($employee, $selectedDate);
         $summary = [
             'present_days' => $records->where('status', 'Present')->count(),
-            'absent_days' => $records->where('status', 'Absent')->count(),
+            'absent_days' => $records->where('status', 'Not Present')->count(),
             'tardiness_total' => $records->sum('tardiness_minutes'),
             'undertime_total' => $records->sum('undertime_minutes'),
         ];
@@ -1013,37 +1014,36 @@ class OperationsController extends Controller
                 ->whereIn('leave_type', array_values(array_unique([$leaveType, $policy['storage_leave_type']])))
                 ->first();
 
-            if ($shouldTrackInLeaveModule) {
-                if ($existing) {
-                    $existing->update($attributes);
-                    $updated++;
-                } else {
-                    LeaveRequest::create(array_merge(['employee_id' => $employee->id], $attributes));
-                    $imported++;
-                }
-            } elseif ($existing) {
-                // Keep Leave Monitoring clean for non-trackable leave categories.
-                $existing->delete();
+            // Persist all imported leave rows so the Leave Monitoring module
+            // can reflect every leave type (tracked or not). Previously,
+            // non-trackable leaves were removed; now we keep them for visibility.
+            if ($existing) {
+                $existing->update($attributes);
+                $updated++;
+            } else {
+                LeaveRequest::create(array_merge(['employee_id' => $employee->id], $attributes));
+                $imported++;
             }
 
-            if ($status === 'approved' && $isEligible && $policy['auto_mark_present']) {
-                $this->queueAutoPresentAttendance(
+            if ($status === 'approved') {
+                $this->queueLeaveToDtrEntries(
                     $queuedAttendanceRows,
                     $employee,
                     Carbon::parse($startDate),
                     Carbon::parse($endDate),
-                    $policy['label']
+                    $policy,
+                    $attributes['days_deducted'] ?? 0
                 );
-            }
 
-            if ($status === 'approved' && $isEligible && $policy['requires_wfh_submission']) {
-                $this->queueWfhUploadRequiredNotification(
-                    $queuedWfhRequests,
-                    $employee,
-                    Carbon::parse($startDate),
-                    Carbon::parse($endDate),
-                    $policy['label']
-                );
+                if ($isEligible && $policy['requires_wfh_submission']) {
+                    $this->queueWfhUploadRequiredNotification(
+                        $queuedWfhRequests,
+                        $employee,
+                        Carbon::parse($startDate),
+                        Carbon::parse($endDate),
+                        $policy['label']
+                    );
+                }
             }
 
             $applied[$employee->full_name . ' (' . $employee->employee_id . ')'] = true;
@@ -1112,6 +1112,85 @@ class OperationsController extends Controller
                 'schedule_status' => 'validated',
                 'schedule_notes' => 'Auto-fulfilled from approved leave: '.$leaveLabel,
                 'status' => 'present',
+            ];
+        }
+    }
+
+    /**
+     * Queue DTR entries for an approved leave according to policy and balances.
+     * Stores status as 'present' or 'absent' to align with existing model values.
+     *
+     * @param array<string, array<string, mixed>> $queuedAttendanceRows
+     */
+    private function queueLeaveToDtrEntries(array &$queuedAttendanceRows, Employee $employee, Carbon $startDate, Carbon $endDate, array $policy, float $daysDeducted): void
+    {
+        // Do not auto-mark anything for leaves that require WFH submission here.
+        if (! empty($policy['requires_wfh_submission'])) {
+            return;
+        }
+
+        $periodStart = $startDate->copy()->startOfDay();
+        $periodEnd = $endDate->copy()->startOfDay();
+
+        if ($periodEnd->lt($periodStart)) {
+            $periodEnd = $periodStart->copy();
+        }
+
+        $leaveBalanceService = app(LeaveBalanceService::class);
+        $leaveMonitoring = app(LeaveMonitoringService::class);
+        $isRegular = $leaveMonitoring->isRegularEmployee($employee, $periodStart);
+        $storageType = $policy['storage_leave_type'] ?? '';
+        $isDeductible = $leaveBalanceService->isDeductibleLeaveType($storageType);
+
+        $remainingBalance = $isDeductible ? $leaveBalanceService->getRemainingBalance($employee, $storageType) : null;
+
+        // Determine how many days may be covered by leave credits.
+        $allocatable = $isDeductible && $remainingBalance !== null ? min($remainingBalance, $daysDeducted) : $daysDeducted;
+
+        foreach (CarbonPeriod::create($periodStart, $periodEnd) as $date) {
+            $recordDate = $date->toDateString();
+            $key = $employee->id.'|'.$recordDate;
+
+            if (isset($queuedAttendanceRows[$key])) {
+                continue;
+            }
+
+            // Decide status per rules:
+            // - If leave requires regular employees and employee is non-regular -> Not Present
+            // - For deductible Vacation/Sick: allocate available balance across days; excess -> Not Present
+            // - Otherwise (auto-markable leave types) -> Present
+            $status = 'absent';
+            $notes = 'Approved leave: '.($policy['label'] ?? $storageType);
+
+            if (($policy['requires_regular'] ?? false) && ! $isRegular) {
+                $status = 'absent';
+                $notes = 'Approved leave (non-regular): '.($policy['label'] ?? $storageType);
+            } elseif ($isDeductible) {
+                if ($allocatable > 0) {
+                    $status = 'present';
+                    $allocatable -= 1;
+                } else {
+                    $status = 'absent';
+                    $notes = 'Approved leave exceeded balance: '.($policy['label'] ?? $storageType);
+                }
+            } else {
+                // Non-deductible and does not require WFH -> Present for all employees
+                $status = 'present';
+            }
+
+            $queuedAttendanceRows[$key] = [
+                'employee_id' => $employee->id,
+                'record_date' => $recordDate,
+                'time_in' => null,
+                'time_out' => null,
+                'scheduled_time_in' => null,
+                'scheduled_time_out' => null,
+                'tardiness_minutes' => 0,
+                'undertime_minutes' => 0,
+                'overtime_minutes' => 0,
+                'schedule_status' => 'validated',
+                'schedule_notes' => $notes,
+                'status' => $status,
             ];
         }
     }
@@ -1673,7 +1752,7 @@ class OperationsController extends Controller
                     $statusLabel = match ($record->schedule_status) {
                         'no_schedule' => 'No schedule available',
                         'non_working_day' => 'Non-working day',
-                        default => ucfirst($record->status),
+                        default => ($record->status === 'present') ? 'Present' : 'Not Present',
                     };
 
                     return [
@@ -1708,7 +1787,7 @@ class OperationsController extends Controller
                     'time_out' => '-',
                     'tardiness_minutes' => 0,
                     'undertime_minutes' => 0,
-                    'status' => 'Absent',
+                    'status' => 'Not Present',
                 ];
             })
             ->values();
