@@ -53,18 +53,18 @@
                         </td>
                         <td class="px-6 py-4 text-sm text-slate-600">{{ $user['department'] }}</td>
                         <td class="px-6 py-4 text-sm text-slate-600">{{ $user['status'] }}</td>
-                        <td class="px-6 py-4 text-sm">
-                            <form action="{{ route('admin.roles.update', $user['id']) }}" method="POST" class="flex gap-2">
-                                @csrf
-                                @method('PUT')
-                                <select name="user_type" class="px-3 py-1 border border-slate-300 rounded text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
-                                    @foreach($roles as $role)
-                                        <option value="{{ $role['value'] }}" @selected($user['user_type'] === $role['value'])>{{ $role['label'] }}</option>
-                                    @endforeach
-                                </select>
-                                <button type="submit" class="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1 rounded text-sm font-medium">Update</button>
-                            </form>
-                        </td>
+                            <td class="px-6 py-4 text-sm">
+                                <form action="{{ route('admin.roles.update', $user['id']) }}" method="POST" class="flex gap-2">
+                                    @csrf
+                                    @method('PUT')
+                                    <select name="user_type" class="px-3 py-1 border border-slate-300 rounded text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+                                        @foreach($roles as $role)
+                                            <option value="{{ $role['value'] }}" @selected($user['user_type'] === $role['value'])>{{ $role['label'] }}</option>
+                                        @endforeach
+                                    </select>
+                                    <button type="submit" class="bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-1 rounded text-sm font-medium">Save</button>
+                                </form>
+                            </td>
                     </tr>
                 @endforeach
             </tbody>

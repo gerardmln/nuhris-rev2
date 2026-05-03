@@ -12,7 +12,13 @@
         <div>
             <p class="text-sm text-slate-500">View biometric attendance records, print DTR, and upload DTR files</p>
         </div>
-        <div class="flex items-center gap-2">
+        <div class="flex flex-wrap items-center gap-2">
+            <form method="POST" action="{{ route('admin.dtr.clear-all') }}" onsubmit="return confirm('Clear ALL DTR records for the selected period?');">
+                @csrf
+                <input type="hidden" name="month" value="{{ $selectedMonth }}">
+                <input type="hidden" name="year" value="{{ $selectedYear }}">
+                <button type="submit" class="rounded-lg border border-red-300 bg-white px-4 py-2 text-sm font-semibold text-red-700 shadow-sm transition hover:bg-red-50">Clear All</button>
+            </form>
             <button data-open-modal="upload-dtr-modal" class="rounded-lg bg-[#00386f] px-4 py-2 text-sm font-semibold text-white hover:bg-[#002f5d] transition">Upload DTR PDF</button>
         </div>
     </div>
@@ -221,6 +227,12 @@
                 @endunless
                 <p class="mt-3 text-xs text-slate-500">Schedule: {{ $card['schedule_summary'] }}</p>
                 <a href="{{ route('admin.dtr.index', ['employee_id' => $card['id'], 'month' => $selectedMonth, 'year' => $selectedYear]) }}" class="mt-3 block w-full rounded-md bg-[#00386f] px-3 py-2 text-center text-sm font-semibold text-white hover:bg-[#002f5d] transition">View DTR</a>
+                <form method="POST" action="{{ route('admin.dtr.clear-employee', $card['id']) }}" class="mt-2" onsubmit="return confirm('Clear DTR records for {{ $card['name'] }} in the selected period?');">
+                    @csrf
+                    <input type="hidden" name="month" value="{{ $selectedMonth }}">
+                    <input type="hidden" name="year" value="{{ $selectedYear }}">
+                    <button type="submit" class="block w-full rounded-md border border-red-300 px-3 py-2 text-center text-sm font-semibold text-red-700 transition hover:bg-red-50">Clear DTR</button>
+                </form>
             </article>
         @empty
             <div class="col-span-full rounded-xl border border-slate-200 bg-white p-8 text-center">

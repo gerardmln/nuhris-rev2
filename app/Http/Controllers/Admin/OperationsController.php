@@ -9,6 +9,7 @@ use App\Models\AttendanceRecord;
 use App\Models\Department;
 use App\Models\Employee;
 use App\Models\EmployeeCredential;
+use App\Models\EmployeeScheduleSubmission;
 use App\Models\LeaveBalance;
 use App\Models\LeaveRequest;
 use App\Models\User;
@@ -218,6 +219,24 @@ class OperationsController extends Controller
 
         // Build employee cards similar to HR Timekeeping UI
         $employees = Employee::query()->orderBy('last_name')->orderBy('first_name')->get();
+        $employeeIds = $employees->pluck('id');
+
+        $approvedSchedules = EmployeeScheduleSubmission::query()
+            ->with('days')
+            ->whereIn('employee_id', $employeeIds)
+            ->where('status', EmployeeScheduleSubmission::STATUS_APPROVED)
+            ->orderByDesc('submitted_at')
+            ->get()
+            ->groupBy('employee_id')
+            ->map(fn ($group) => $group->first());
+
+        $approvedLeaves = LeaveRequest::query()
+            ->whereIn('employee_id', $employeeIds)
+            ->where('status', 'approved')
+            ->whereDate('start_date', '<=', $dateTo->toDateString())
+            ->whereDate('end_date', '>=', $dateFrom->toDateString())
+            ->get()
+            ->groupBy('employee_id');
 
         $attendanceStats = AttendanceRecord::query()
             ->whereIn('employee_id', $employees->pluck('id'))
@@ -230,8 +249,10 @@ class OperationsController extends Controller
                 'has_data' => $group->isNotEmpty(),
             ]);
 
-        $employeeCards = $employees->map(function (Employee $emp) use ($attendanceStats, $dateFrom, $dateTo, $scheduleService) {
+        $employeeCards = $employees->map(function (Employee $emp) use ($attendanceStats, $dateFrom, $dateTo, $scheduleService, $approvedSchedules, $approvedLeaves) {
             $stats = $attendanceStats->get($emp->id, ['present' => 0, 'tardiness' => 0, 'has_data' => false]);
+            $employeeApprovedSchedule = $approvedSchedules->get($emp->id);
+            $employeeApprovedLeaves = $approvedLeaves->get($emp->id, collect());
 
             return [
                 'id' => $emp->id,
@@ -240,9 +261,9 @@ class OperationsController extends Controller
                 'department' => $emp->department?->name ?? 'Unassigned',
                 'present' => $stats['present'],
                 'tardiness' => $stats['tardiness'],
-                'absences' => $scheduleService->countDtrAbsences($emp, $dateFrom, $dateTo),
+                'absences' => $scheduleService->countDtrAbsencesWithContext($emp, $dateFrom, $dateTo, $employeeApprovedLeaves, $employeeApprovedSchedule),
                 'has_data' => $stats['has_data'],
-                'schedule_summary' => $scheduleService->summarizeSubmission($scheduleService->currentSubmission($emp)),
+                'schedule_summary' => $scheduleService->summarizeSubmission($employeeApprovedSchedule),
             ];
         });
 
@@ -706,19 +727,16 @@ class OperationsController extends Controller
 
         $dbRecords = collect();
         $scheduleService = app(EmployeeScheduleService::class);
-        $approvedSubmission = null;
 
         if ($employee) {
             $dbRecords = AttendanceRecord::where('employee_id', $employee->id)
                 ->whereBetween('record_date', [$baseDate->copy()->startOfMonth(), $baseDate->copy()->endOfMonth()])
                 ->get()
                 ->keyBy(fn ($record) => $record->record_date->format('Y-m-d'));
-
-            $approvedSubmission = $scheduleService->approvedSubmissionForDate($employee, $baseDate);
         }
 
         return collect($period)
-            ->map(function (Carbon $date) use ($employee, $dbRecords, $approvedSubmission) {
+            ->map(function (Carbon $date) use ($employee, $dbRecords, $scheduleService) {
                 $dateKey = $date->format('Y-m-d');
                 $dayOfWeekIso = $date->dayOfWeekIso;
 
@@ -734,39 +752,30 @@ class OperationsController extends Controller
                     ];
                 }
 
-                if ($employee && $approvedSubmission) {
-                    $scheduleDay = $approvedSubmission->days->firstWhere('day_index', $dayOfWeekIso);
-
-                    if ($scheduleDay && ! $scheduleDay->has_work) {
-                        return [
-                            'date' => $date->format('M j'),
-                            'day' => $date->format('D'),
-                            'time_in' => '-',
-                            'time_out' => '-',
-                            'tardiness_minutes' => 0,
-                            'undertime_minutes' => 0,
-                            'status' => 'Non-working day',
-                        ];
-                    }
-                }
-
-                if ($dbRecords->has($dateKey)) {
+                if ($employee) {
                     $record = $dbRecords->get($dateKey);
-                    $statusLabel = match ($record->schedule_status) {
+                    $evaluation = $scheduleService->evaluateDailyRecord(
+                        $employee,
+                        $date,
+                        $record?->time_in ? Carbon::parse($record->time_in)->format('H:i') : null,
+                        $record?->time_out ? Carbon::parse($record->time_out)->format('H:i') : null,
+                    );
+
+                    $statusLabel = match ($evaluation['schedule_status']) {
                         'no_schedule' => 'No schedule available',
                         'non_working_day' => 'Non-working day',
-                        default => ($record->status === 'present') ? 'Present' : 'Not Present',
+                        default => ($evaluation['status'] === 'present') ? 'Present' : 'Not Present',
                     };
 
                     return [
                         'date' => $date->format('M j'),
                         'day' => $date->format('D'),
-                        'time_in' => $record->time_in ? Carbon::parse($record->time_in)->format('H:i') : '-',
-                        'time_out' => $record->time_out ? Carbon::parse($record->time_out)->format('H:i') : '-',
-                        'tardiness_minutes' => $record->tardiness_minutes,
-                        'undertime_minutes' => $record->undertime_minutes,
-                        'schedule_status' => $record->schedule_status,
-                        'schedule_notes' => $record->schedule_notes,
+                        'time_in' => $record?->time_in ? Carbon::parse($record->time_in)->format('H:i') : '-',
+                        'time_out' => $record?->time_out ? Carbon::parse($record->time_out)->format('H:i') : '-',
+                        'tardiness_minutes' => $evaluation['tardiness_minutes'],
+                        'undertime_minutes' => $evaluation['undertime_minutes'],
+                        'schedule_status' => $evaluation['schedule_status'],
+                        'schedule_notes' => $evaluation['schedule_notes'],
                         'status' => $statusLabel,
                     ];
                 }
@@ -829,9 +838,62 @@ class OperationsController extends Controller
             ->with('success', 'DTR record updated successfully.');
     }
 
+    public function clearEmployeeDtr(Request $request, Employee $employee): RedirectResponse
+    {
+        [$dateFrom, $dateTo] = $this->resolveDtrDateRange($request);
+
+        $deleted = AttendanceRecord::query()
+            ->where('employee_id', $employee->id)
+            ->whereBetween('record_date', [$dateFrom->toDateString(), $dateTo->toDateString()])
+            ->delete();
+
+        return redirect()->route('admin.dtr.index', [
+            'employee_id' => $employee->id,
+            'month' => $dateFrom->month,
+            'year' => $dateFrom->year,
+        ])->with('success', $deleted > 0
+            ? "Cleared {$deleted} DTR record(s) for {$employee->full_name}."
+            : "No DTR records found for {$employee->full_name} in the selected period.");
+    }
+
+    public function clearAllDtr(Request $request): RedirectResponse
+    {
+        [$dateFrom, $dateTo] = $this->resolveDtrDateRange($request);
+
+        $deleted = AttendanceRecord::query()
+            ->whereBetween('record_date', [$dateFrom->toDateString(), $dateTo->toDateString()])
+            ->delete();
+
+        return redirect()->route('admin.dtr.index', [
+            'month' => $dateFrom->month,
+            'year' => $dateFrom->year,
+        ])->with('success', $deleted > 0
+            ? "Cleared {$deleted} DTR record(s) for the selected period."
+            : 'No DTR records found for the selected period.');
+    }
+
     /**
      * ========== WFH MANAGEMENT (ADMIN-ONLY) ==========
      */
+
+    private function resolveDtrDateRange(Request $request): array
+    {
+        $month = $request->integer('month');
+        $year = $request->integer('year');
+
+        if ($month && $year) {
+            $dateFrom = Carbon::createFromDate($year, $month, 1)->startOfMonth();
+            $dateTo = Carbon::createFromDate($year, $month, 1)->endOfMonth();
+        } elseif ($request->filled('date_from') && $request->filled('date_to')) {
+            $dateFrom = Carbon::createFromFormat('Y-m-d', $request->string('date_from')->toString())->startOfDay();
+            $dateTo = Carbon::createFromFormat('Y-m-d', $request->string('date_to')->toString())->endOfDay();
+        } else {
+            $dateFrom = Carbon::now()->startOfMonth();
+            $dateTo = Carbon::now()->endOfMonth();
+        }
+
+        return [$dateFrom, $dateTo];
+    }
 
     public function wfhIndex(): View
     {

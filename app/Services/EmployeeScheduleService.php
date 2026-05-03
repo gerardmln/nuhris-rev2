@@ -6,6 +6,7 @@ use App\Models\Employee;
 use App\Models\AttendanceRecord;
 use App\Models\EmployeeScheduleDay;
 use App\Models\EmployeeScheduleSubmission;
+use App\Models\LeaveRequest;
 use Carbon\Carbon;
 use Carbon\CarbonPeriod;
 use Illuminate\Support\Collection;
@@ -46,6 +47,19 @@ class EmployeeScheduleService
             ->first();
     }
 
+    public function approvedLeaveForDate(Employee $employee, Carbon $date): ?LeaveRequest
+    {
+        $dateString = $date->toDateString();
+
+        return $employee->leaveRequests()
+            ->where('status', 'approved')
+            ->whereDate('start_date', '<=', $dateString)
+            ->whereDate('end_date', '>=', $dateString)
+            ->orderByDesc('start_date')
+            ->orderByDesc('updated_at')
+            ->first();
+    }
+
     /**
      * @param  array<string, array<string, string|null>>  $days
      * @return array<int, array<string, mixed>>
@@ -76,6 +90,12 @@ class EmployeeScheduleService
      */
     public function evaluateDailyRecord(Employee $employee, Carbon $date, ?string $timeIn, ?string $timeOut): array
     {
+        $approvedLeave = $this->approvedLeaveForDate($employee, $date);
+
+        if ($approvedLeave) {
+            return $this->evaluateApprovedLeaveRecord($employee, $approvedLeave, $date, $timeIn, $timeOut);
+        }
+
         $submission = $this->approvedSubmissionForDate($employee, $date);
 
         if (! $submission) {
@@ -152,6 +172,44 @@ class EmployeeScheduleService
         ];
     }
 
+    /**
+     * @return array{schedule_status:string, schedule_notes:?string, scheduled_time_in:?string, scheduled_time_out:?string, tardiness_minutes:int, undertime_minutes:int, overtime_minutes:int, status:string}
+     */
+    private function evaluateApprovedLeaveRecord(Employee $employee, LeaveRequest $leave, Carbon $date, ?string $timeIn, ?string $timeOut): array
+    {
+        $leaveMonitoring = app(LeaveMonitoringService::class);
+        $leaveBalanceService = app(LeaveBalanceService::class);
+        $policy = $leaveMonitoring->resolvePolicy((string) $leave->leave_type);
+        $leaveLabel = $policy['label'] ?? trim((string) $leave->leave_type) ?: 'Leave';
+        $storageType = $policy['storage_leave_type'] ?? $leaveLabel;
+        $isRegular = $leaveMonitoring->isRegularEmployee($employee, $date);
+
+        $status = 'present';
+        $notes = 'Approved leave: '.$leaveLabel;
+
+        if (($policy['requires_regular'] ?? false) && ! $isRegular) {
+            $status = 'absent';
+            $notes = 'Approved leave (non-regular): '.$leaveLabel;
+        } elseif (! empty($policy['requires_wfh_submission'])) {
+            $status = ($timeIn || $timeOut) ? 'present' : 'absent';
+            $notes = 'Approved leave: '.$leaveLabel;
+        } elseif ($leaveBalanceService->isDeductibleLeaveType($storageType) && $leaveBalanceService->getRemainingBalance($employee, $storageType) <= 0) {
+            $status = 'absent';
+            $notes = 'Approved leave exceeded balance: '.$leaveLabel;
+        }
+
+        return [
+            'schedule_status' => 'validated',
+            'schedule_notes' => $notes,
+            'scheduled_time_in' => null,
+            'scheduled_time_out' => null,
+            'tardiness_minutes' => 0,
+            'undertime_minutes' => 0,
+            'overtime_minutes' => 0,
+            'status' => $status,
+        ];
+    }
+
     public function mapDaysByIndex(iterable $days): array
     {
         $mapped = [];
@@ -188,6 +246,14 @@ class EmployeeScheduleService
 
     public function countDtrAbsences(Employee $employee, Carbon $startDate, Carbon $endDate): int
     {
+        return $this->countDtrAbsencesWithContext($employee, $startDate, $endDate);
+    }
+
+    /**
+     * @param ?Collection<int, LeaveRequest> $approvedLeaves
+     */
+    public function countDtrAbsencesWithContext(Employee $employee, Carbon $startDate, Carbon $endDate, ?Collection $approvedLeaves = null, ?EmployeeScheduleSubmission $submission = null): int
+    {
         $periodStart = $startDate->copy()->startOfDay();
         $periodEnd = $endDate->copy()->startOfDay();
 
@@ -201,7 +267,7 @@ class EmployeeScheduleService
             ->get()
             ->keyBy(fn (AttendanceRecord $record) => $record->record_date->toDateString());
 
-        $submission = $this->approvedSubmissionForDate($employee, $periodStart);
+        $submission ??= $this->approvedSubmissionForDate($employee, $periodStart);
         $absences = 0;
 
         foreach (CarbonPeriod::create($periodStart, $periodEnd) as $date) {
@@ -210,6 +276,10 @@ class EmployeeScheduleService
             }
 
             if ($date->dayOfWeekIso === 7) {
+                continue;
+            }
+
+            if ($approvedLeaves && $approvedLeaves->contains(fn (LeaveRequest $leave) => $leave->start_date?->lte($date) && $leave->end_date?->gte($date))) {
                 continue;
             }
 

@@ -1700,19 +1700,16 @@ class OperationsController extends Controller
 
         $dbRecords = collect();
         $scheduleService = app(EmployeeScheduleService::class);
-        $approvedSubmission = null;
 
         if ($employee) {
             $dbRecords = AttendanceRecord::where('employee_id', $employee->id)
                 ->whereBetween('record_date', [$baseDate->copy()->startOfMonth(), $baseDate->copy()->endOfMonth()])
                 ->get()
                 ->keyBy(fn ($r) => $r->record_date->format('Y-m-d'));
-
-            $approvedSubmission = $scheduleService->approvedSubmissionForDate($employee, $baseDate);
         }
 
         return collect($period)
-            ->map(function (Carbon $date, int $index) use ($employee, $dbRecords, $scheduleService, $approvedSubmission) {
+            ->map(function (Carbon $date, int $index) use ($employee, $dbRecords, $scheduleService) {
                 $dateKey = $date->format('Y-m-d');
                 $dayOfWeekIso = $date->dayOfWeekIso; // 1=Monday, 7=Sunday
 
@@ -1729,41 +1726,30 @@ class OperationsController extends Controller
                     ];
                 }
 
-                // For Monday-Saturday (dayOfWeekIso 1-6), check employee's approved schedule
-                if ($employee && $approvedSubmission) {
-                    $scheduleDay = $approvedSubmission->days->firstWhere('day_index', $dayOfWeekIso);
-
-                    // If schedule explicitly marks this day as non-working, show it even if no attendance record exists
-                    if ($scheduleDay && !$scheduleDay->has_work) {
-                        return [
-                            'date' => $date->format('M j'),
-                            'day' => $date->format('D'),
-                            'time_in' => '-',
-                            'time_out' => '-',
-                            'tardiness_minutes' => 0,
-                            'undertime_minutes' => 0,
-                            'status' => 'Non-working day',
-                        ];
-                    }
-                }
-
-                if ($dbRecords->has($dateKey)) {
+                if ($employee) {
                     $record = $dbRecords->get($dateKey);
-                    $statusLabel = match ($record->schedule_status) {
+                    $evaluation = $scheduleService->evaluateDailyRecord(
+                        $employee,
+                        $date,
+                        $record?->time_in ? Carbon::parse($record->time_in)->format('H:i') : null,
+                        $record?->time_out ? Carbon::parse($record->time_out)->format('H:i') : null,
+                    );
+
+                    $statusLabel = match ($evaluation['schedule_status']) {
                         'no_schedule' => 'No schedule available',
                         'non_working_day' => 'Non-working day',
-                        default => ($record->status === 'present') ? 'Present' : 'Not Present',
+                        default => ($evaluation['status'] === 'present') ? 'Present' : 'Not Present',
                     };
 
                     return [
                         'date' => $date->format('M j'),
                         'day' => $date->format('D'),
-                        'time_in' => $record->time_in ? Carbon::parse($record->time_in)->format('H:i') : '-',
-                        'time_out' => $record->time_out ? Carbon::parse($record->time_out)->format('H:i') : '-',
-                        'tardiness_minutes' => $record->tardiness_minutes,
-                        'undertime_minutes' => $record->undertime_minutes,
-                        'schedule_status' => $record->schedule_status,
-                        'schedule_notes' => $record->schedule_notes,
+                        'time_in' => $record?->time_in ? Carbon::parse($record->time_in)->format('H:i') : '-',
+                        'time_out' => $record?->time_out ? Carbon::parse($record->time_out)->format('H:i') : '-',
+                        'tardiness_minutes' => $evaluation['tardiness_minutes'],
+                        'undertime_minutes' => $evaluation['undertime_minutes'],
+                        'schedule_status' => $evaluation['schedule_status'],
+                        'schedule_notes' => $evaluation['schedule_notes'],
                         'status' => $statusLabel,
                     ];
                 }
