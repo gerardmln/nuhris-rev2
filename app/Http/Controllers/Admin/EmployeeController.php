@@ -20,6 +20,56 @@ use Illuminate\View\View;
 
 class EmployeeController extends Controller
 {
+    public function create(): View
+    {
+        return view('admin.employees.create', array_merge([
+            'departments' => Department::query()->orderBy('name')->get(),
+        ], $this->formOptions()));
+    }
+
+    public function store(StoreEmployeeRequest $request): RedirectResponse
+    {
+        $payload = $request->validated();
+        $payload = $this->applyDefaultDepartmentForNonTeachingRoles($payload);
+        $payload['status'] = 'active';
+
+        if (empty($payload['employee_id'])) {
+            unset($payload['employee_id']);
+        }
+
+        $attempt = 0;
+        $employee = null;
+
+        while (true) {
+            try {
+                $employee = Employee::create($payload);
+                break;
+            } catch (\Illuminate\Database\UniqueConstraintViolationException $exception) {
+                $attempt++;
+
+                if ($attempt >= 3 || ! str_contains($exception->getMessage(), 'employees_employee_id_unique')) {
+                    throw $exception;
+                }
+
+                $payload['employee_id'] = Employee::generateEmployeeId();
+            }
+        }
+
+        [$tempPassword] = $this->provisionEmployeeAccount($employee);
+        $emailStatus = $this->sendCredentialsEmail($employee, $tempPassword, isResend: false);
+
+        return redirect()
+            ->route('admin.employees.index')
+            ->with('success', 'Employee created successfully.')
+            ->with('credential_notice', [
+                'employee_name' => $employee->full_name,
+                'employee_id' => $employee->employee_id,
+                'email' => $employee->email,
+                'temp_password' => $tempPassword,
+                'email_status' => $emailStatus,
+            ]);
+    }
+
     public function index(Request $request): View
     {
         $search = $request->string('search')->toString();
@@ -202,4 +252,5 @@ class EmployeeController extends Controller
 
         return $payload;
     }
+
 }

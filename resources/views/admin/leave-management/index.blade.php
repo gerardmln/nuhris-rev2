@@ -29,13 +29,6 @@
         @method('DELETE')
     </form>
 
-    @if (session('success'))
-        <div class="rounded-lg border border-emerald-300 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">{{ session('success') }}</div>
-    @endif
-    @if (session('error'))
-        <div class="rounded-lg border border-red-300 bg-red-50 px-4 py-3 text-sm text-red-800">{{ session('error') }}</div>
-    @endif
-
     @if (session('unmatched_employees') || session('applied_employees'))
         @php
             $unmatchedList = session('unmatched_employees', []);

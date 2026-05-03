@@ -240,6 +240,7 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'user.type:1'])->gro
     // ========== CREDENTIAL MANAGEMENT (ADMIN-ONLY) ==========
     Route::prefix('credentials')->name('credentials.')->group(function () {
         Route::get('/', [AdminOperationsController::class, 'credentials'])->name('index');
+        Route::get('/{credential}/view', [AdminOperationsController::class, 'viewCredentialFile'])->whereNumber('credential')->name('view');
         Route::get('/{credential}/edit', [AdminOperationsController::class, 'editCredential'])->whereNumber('credential')->name('edit');
         Route::put('/{credential}', [AdminOperationsController::class, 'updateCredential'])->whereNumber('credential')->name('update');
         Route::delete('/{credential}', [AdminOperationsController::class, 'deleteCredential'])->whereNumber('credential')->name('destroy');
@@ -249,6 +250,9 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'user.type:1'])->gro
     // ========== DTR / TIMEKEEPING EDITING (ADMIN-ONLY) ==========
     Route::prefix('dtr')->name('dtr.')->group(function () {
         Route::get('/', [AdminOperationsController::class, 'dtrIndex'])->name('index');
+        Route::get('/export-pdf', [AdminOperationsController::class, 'exportDtrPdf'])->name('export-pdf');
+        Route::get('/export-excel', [AdminOperationsController::class, 'exportDtrExcel'])->name('export-excel');
+        Route::post('/upload', [AdminOperationsController::class, 'uploadDtr'])->name('upload');
         Route::get('/{record}/edit', [AdminOperationsController::class, 'editDtrRecord'])->whereNumber('record')->name('edit');
         Route::put('/{record}', [AdminOperationsController::class, 'updateDtrRecord'])->whereNumber('record')->name('update');
     });
@@ -256,6 +260,10 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'user.type:1'])->gro
     // ========== WFH MANAGEMENT (ADMIN-ONLY) ==========
     Route::prefix('wfh-monitoring')->name('wfh-monitoring.')->group(function () {
         Route::get('/', [AdminOperationsController::class, 'wfhIndex'])->name('index');
+        Route::get('/{submission}/view', [AdminOperationsController::class, 'viewWfhFile'])->whereNumber('submission')->name('view');
+        Route::post('/{submission}/approve', [AdminOperationsController::class, 'approveWfhSubmission'])->whereNumber('submission')->name('approve');
+        Route::post('/{submission}/decline', [AdminOperationsController::class, 'declineWfhSubmission'])->whereNumber('submission')->name('decline');
+        Route::delete('/{submission}', [AdminOperationsController::class, 'deleteWfhSubmission'])->whereNumber('submission')->name('destroy');
         Route::delete('/', [AdminOperationsController::class, 'clearAllWfh'])->name('clear-all');
     });
 
@@ -271,7 +279,6 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'user.type:1'])->gro
     Route::prefix('schedule-management')->name('schedules.')->group(function () {
         Route::get('/', [AdminScheduleManagementController::class, 'index'])->name('index');
         Route::post('/{submission}/approve', [AdminScheduleManagementController::class, 'approve'])->whereNumber('submission')->name('approve');
-        Route::post('/{submission}/decline', [AdminScheduleManagementController::class, 'decline'])->whereNumber('submission')->name('decline');
         Route::delete('/employee/{employee}', [AdminScheduleManagementController::class, 'resetEmployee'])->whereNumber('employee')->name('employee.reset');
         Route::delete('/', [AdminScheduleManagementController::class, 'resetAll'])->name('reset-all');
     });
@@ -290,6 +297,8 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'user.type:1'])->gro
     // ========== ADMIN EMPLOYEES ==========
     Route::prefix('employees')->name('employees.')->group(function () {
         Route::get('/', [\App\Http\Controllers\Admin\EmployeeController::class, 'index'])->name('index');
+        Route::get('/create', [\App\Http\Controllers\Admin\EmployeeController::class, 'create'])->name('create');
+        Route::post('/', [\App\Http\Controllers\Admin\EmployeeController::class, 'store'])->name('store');
         Route::get('/{employee}', [\App\Http\Controllers\Admin\EmployeeController::class, 'show'])->whereNumber('employee')->name('show');
         Route::get('/{employee}/edit', [\App\Http\Controllers\Admin\EmployeeController::class, 'edit'])->whereNumber('employee')->name('edit');
         Route::put('/{employee}', [\App\Http\Controllers\Admin\EmployeeController::class, 'update'])->whereNumber('employee')->name('update');

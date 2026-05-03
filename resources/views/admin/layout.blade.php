@@ -141,90 +141,14 @@
         </aside>
 
         <main class="min-h-screen flex-1">
-            <header class="border-b border-slate-300 bg-[#0a3f79] px-8 py-4 shadow-sm">
-                <div class="flex items-start justify-between gap-4">
+            <header class="border-b border-slate-300 bg-white px-6 py-4">
+                <div class="flex items-center justify-between">
                     <div>
-                        <h1 class="text-[36px] font-bold leading-none text-white">Admin Dashboard</h1>
-                        <p class="text-sm text-blue-100">National University HRIS</p>
+                        <h1 class="text-[30px] font-bold leading-none text-[#1f2b5d]">{{ $pageHeading ?? ($pageTitle ?? 'Admin Dashboard') }}</h1>
+                        <p class="text-sm text-slate-500">National University HRIS</p>
                     </div>
-                    <div class="flex items-center gap-2 text-white">
-                        <div class="relative">
-                            <button id="admin-bell-toggle" type="button" class="rounded-full p-2 hover:bg-white/10" aria-label="Notifications" aria-expanded="false" aria-controls="admin-notification-panel">
-                                <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
-                                    <path d="M15 17h5l-1.4-1.4A2 2 0 0 1 18 14.2V11a6 6 0 1 0-12 0v3.2a2 2 0 0 1-.6 1.4L4 17h5"></path>
-                                    <path d="M10 20a2 2 0 0 0 4 0"></path>
-                                </svg>
-                            </button>
 
-                            <div id="admin-notification-panel" class="absolute right-0 z-50 mt-2 hidden w-72 rounded-xl border border-slate-200 bg-white p-3 text-slate-900 shadow-xl">
-                                <div class="mb-3 flex items-center justify-between">
-                                    <h3 class="text-2xl font-semibold leading-none text-[#232f83]">Notifications</h3>
-                                    <button type="button" class="text-xs font-medium text-red-600 hover:underline">Mark all as read</button>
-                                </div>
-
-                                <div class="space-y-3">
-                                    <article>
-                                        <p class="text-xl font-medium leading-tight">PRC License Expiring</p>
-                                        <p class="text-xs text-slate-500">5 faculty members have licenses expiring in 30 days</p>
-                                        <p class="text-xs text-slate-400">5 min ago</p>
-                                    </article>
-
-                                    <article>
-                                        <p class="text-xl font-medium leading-tight">New User Registration</p>
-                                        <p class="text-xs text-slate-500">John Smith has been added to the system</p>
-                                        <p class="text-xs text-slate-400">1 hour ago</p>
-                                    </article>
-
-                                    <article>
-                                        <p class="text-xl font-medium leading-tight">Compliance Alert</p>
-                                        <p class="text-xs text-slate-500">CHED compliance report due in 7 days</p>
-                                        <p class="text-xs text-slate-400">2 hours ago</p>
-                                    </article>
-
-                                    <article>
-                                        <p class="text-xl font-medium leading-tight">Backup Complete</p>
-                                        <p class="text-xs text-slate-500">System backup completed successfully</p>
-                                        <p class="text-xs text-slate-400">3 hours ago</p>
-                                    </article>
-                                </div>
-                            </div>
-                        </div>
-
-                        <details class="group relative">
-                            <summary class="flex cursor-pointer list-none items-center gap-1 rounded-full px-1 py-1 hover:bg-white/10">
-                                <svg class="h-8 w-8" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
-                                    <circle cx="12" cy="8" r="4"></circle>
-                                    <path d="M4 20c1.5-4 5-6 8-6s6.5 2 8 6"></path>
-                                </svg>
-                                <svg class="h-4 w-4 transition-transform group-open:rotate-180" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
-                                    <path d="M5.25 7.5 10 12.25 14.75 7.5" />
-                                </svg>
-                            </summary>
-
-                            <div class="absolute right-0 z-50 mt-2 w-56 overflow-hidden rounded-xl border border-slate-200 bg-white text-slate-900 shadow-xl">
-                                <div class="border-b border-slate-200 px-4 py-3">
-                                    <p class="text-sm font-semibold">{{ $name }}</p>
-                                    <p class="text-xs text-slate-500">Admin user</p>
-                                </div>
-
-                                @auth
-                                    <div class="p-2">
-                                        <button type="button"
-                                                class="logout-trigger w-full rounded-lg px-3 py-2 text-left text-sm font-medium text-red-600 hover:bg-red-50"
-                                                data-testid="admin-signout-button">
-                                            Sign out
-                                        </button>
-                                    </div>
-                                @else
-                                    <div class="p-2">
-                                        <button type="button" class="w-full rounded-lg px-3 py-2 text-left text-sm font-medium text-slate-700 hover:bg-slate-100">
-                                            Sign out
-                                        </button>
-                                    </div>
-                                @endauth
-                            </div>
-                        </details>
-                    </div>
+                    @include('partials.header-actions')
                 </div>
             </header>
 
@@ -301,44 +225,6 @@
             });
         })();
 
-        (() => {
-            const bellToggle = document.getElementById('admin-bell-toggle');
-            const panel = document.getElementById('admin-notification-panel');
-            if (!bellToggle || !panel) return;
-
-            const closePanel = () => {
-                panel.classList.add('hidden');
-                bellToggle.setAttribute('aria-expanded', 'false');
-            };
-
-            const openPanel = () => {
-                panel.classList.remove('hidden');
-                bellToggle.setAttribute('aria-expanded', 'true');
-            };
-
-            bellToggle.addEventListener('click', (event) => {
-                event.stopPropagation();
-                if (panel.classList.contains('hidden')) {
-                    openPanel();
-                } else {
-                    closePanel();
-                }
-            });
-
-            panel.addEventListener('click', (event) => {
-                event.stopPropagation();
-            });
-
-            document.addEventListener('click', () => {
-                closePanel();
-            });
-
-            document.addEventListener('keydown', (event) => {
-                if (event.key === 'Escape') {
-                    closePanel();
-                }
-            });
-        })();
     </script>
 
     @stack('scripts')

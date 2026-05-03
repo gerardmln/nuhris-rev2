@@ -24,11 +24,15 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\View\View;
+use PhpOffice\PhpSpreadsheet\Cell\Coordinate;
 use PhpOffice\PhpSpreadsheet\IOFactory as SpreadsheetIOFactory;
+use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
+use Smalot\PdfParser\Parser as PdfParser;
 
 class OperationsController extends Controller
 {
     protected SupabaseStorageService $storage;
+    private ?array $currentParseEmployee = null;
 
     public function __construct(SupabaseStorageService $storage)
     {
@@ -102,6 +106,25 @@ class OperationsController extends Controller
         ]);
     }
 
+    public function viewCredentialFile(EmployeeCredential $credential): RedirectResponse
+    {
+        if (! $credential->file_path) {
+            return back()->with('error', 'No file was attached to this credential.');
+        }
+
+        if (! $this->storage->isEnabled()) {
+            return back()->with('error', 'File storage is not configured. Please contact the administrator.');
+        }
+
+        $url = $this->storage->createSignedUrl($credential->file_path, 300);
+
+        if (! $url) {
+            return back()->with('error', 'Unable to generate a download link. Please try again.');
+        }
+
+        return redirect()->away($url);
+    }
+
     public function updateCredential(Request $request, EmployeeCredential $credential): RedirectResponse
     {
         $validated = $request->validate([
@@ -156,26 +179,42 @@ class OperationsController extends Controller
     public function dtrIndex(Request $request): View
     {
         $employeeId = $request->integer('employee_id');
-        
-        // Parse dates with defaults
-        $dateFromInput = $request->get('date_from');
-        $dateToInput = $request->get('date_to');
-        
-        $dateFrom = $dateFromInput 
-            ? Carbon::createFromFormat('Y-m-d', $dateFromInput) 
-            : Carbon::now()->startOfMonth();
-        
-        $dateTo = $dateToInput 
-            ? Carbon::createFromFormat('Y-m-d', $dateToInput) 
-            : Carbon::now()->endOfMonth();
+        $month = $request->integer('month');
+        $year = $request->integer('year');
 
-        $employee = $employeeId ? Employee::query()->findOrFail($employeeId) : null;
+        if ($month && $year) {
+            $dateFrom = Carbon::createFromDate($year, $month, 1)->startOfMonth();
+            $dateTo = Carbon::createFromDate($year, $month, 1)->endOfMonth();
+        } elseif ($request->filled('date_from') && $request->filled('date_to')) {
+            $dateFrom = Carbon::createFromFormat('Y-m-d', $request->string('date_from')->toString())->startOfDay();
+            $dateTo = Carbon::createFromFormat('Y-m-d', $request->string('date_to')->toString())->endOfDay();
+        } else {
+            $dateFrom = Carbon::now()->startOfMonth();
+            $dateTo = Carbon::now()->endOfMonth();
+        }
 
-        $records = AttendanceRecord::query()
-            ->when($employeeId, fn ($q) => $q->where('employee_id', $employeeId))
-            ->whereBetween('record_date', [$dateFrom, $dateTo])
-            ->orderBy('record_date', 'desc')
-            ->get();
+        $selectedMonth = $dateFrom->month;
+        $selectedYear = $dateFrom->year;
+        $employee = $employeeId ? Employee::query()->with('department')->findOrFail($employeeId) : null;
+        $scheduleService = app(EmployeeScheduleService::class);
+
+        $records = collect();
+        $summary = [
+            'present_days' => 0,
+            'absent_days' => 0,
+            'tardiness_total' => 0,
+            'undertime_total' => 0,
+        ];
+
+        if ($employee) {
+            $records = $this->buildAttendanceRows($employee, $dateFrom);
+            $summary = [
+                'present_days' => $records->where('status', 'Present')->count(),
+                'absent_days' => $records->where('status', 'Not Present')->count(),
+                'tardiness_total' => (int) $records->sum('tardiness_minutes'),
+                'undertime_total' => (int) $records->sum('undertime_minutes'),
+            ];
+        }
 
         // Build employee cards similar to HR Timekeeping UI
         $employees = Employee::query()->orderBy('last_name')->orderBy('first_name')->get();
@@ -191,9 +230,8 @@ class OperationsController extends Controller
                 'has_data' => $group->isNotEmpty(),
             ]);
 
-        $employeeCards = $employees->map(function (Employee $emp) use ($attendanceStats, $dateFrom, $dateTo) {
+        $employeeCards = $employees->map(function (Employee $emp) use ($attendanceStats, $dateFrom, $dateTo, $scheduleService) {
             $stats = $attendanceStats->get($emp->id, ['present' => 0, 'tardiness' => 0, 'has_data' => false]);
-            $scheduleService = app(EmployeeScheduleService::class);
 
             return [
                 'id' => $emp->id,
@@ -208,14 +246,553 @@ class OperationsController extends Controller
             ];
         });
 
+        $periods = collect();
+        for ($i = 0; $i < 12; $i++) {
+            $d = now()->subMonths($i);
+            $periods->push([
+                'label' => $d->format('F Y'),
+                'month' => $d->month,
+                'year' => $d->year,
+                'selected' => $d->month === $selectedMonth && $d->year === $selectedYear,
+            ]);
+        }
+
         return view('admin.dtr.index', [
             'records' => $records,
+            'summary' => $summary,
             'employee' => $employee,
             'employees' => $employees,
             'dateFrom' => $dateFrom,
             'dateTo' => $dateTo,
+            'selectedMonth' => $selectedMonth,
+            'selectedYear' => $selectedYear,
+            'periods' => $periods,
             'employeeCards' => $employeeCards,
+            'scheduleSummary' => $employee ? $scheduleService->summarizeSubmission($scheduleService->approvedSubmissionForDate($employee, $dateFrom)) : null,
         ]);
+    }
+
+    public function exportDtrPdf(Request $request)
+    {
+        $employeeId = $request->integer('employee_id');
+        $month = $request->integer('month', (int) now()->month);
+        $year = $request->integer('year', (int) now()->year);
+        $selectedDate = Carbon::createFromDate($year, $month, 1);
+
+        $employee = Employee::query()->with('department')
+            ->when($employeeId, fn ($query) => $query->whereKey($employeeId))
+            ->orderBy('last_name')
+            ->first();
+
+        $records = $this->buildAttendanceRows($employee, $selectedDate);
+        $summary = [
+            'present_days' => $records->where('status', 'Present')->count(),
+            'absent_days' => $records->where('status', 'Not Present')->count(),
+            'tardiness_total' => (int) $records->sum('tardiness_minutes'),
+            'undertime_total' => (int) $records->sum('undertime_minutes'),
+        ];
+
+        $scheduleService = app(EmployeeScheduleService::class);
+
+        $pdf = \Barryvdh\DomPDF\Facade\Pdf::loadView('hr.dtr-export-pdf', [
+            'employee' => $employee,
+            'records' => $records,
+            'summary' => $summary,
+            'period_label' => $selectedDate->format('F Y'),
+            'schedule_summary' => $scheduleService->summarizeSubmission($employee ? $scheduleService->approvedSubmissionForDate($employee, $selectedDate) : null),
+        ]);
+
+        $filename = 'DTR_' . str_replace(' ', '_', $employee?->full_name ?? 'Employee') . '_' . $selectedDate->format('F_Y') . '.pdf';
+
+        return $pdf->download($filename);
+    }
+
+    public function exportDtrExcel(Request $request)
+    {
+        $employeeId = $request->integer('employee_id');
+        $month = $request->integer('month', (int) now()->month);
+        $year = $request->integer('year', (int) now()->year);
+        $selectedDate = Carbon::createFromDate($year, $month, 1);
+
+        $employee = Employee::query()->with('department')
+            ->when($employeeId, fn ($query) => $query->whereKey($employeeId))
+            ->orderBy('last_name')
+            ->first();
+
+        $records = $this->buildAttendanceRows($employee, $selectedDate);
+
+        $spreadsheet = new \PhpOffice\PhpSpreadsheet\Spreadsheet();
+        $sheet = $spreadsheet->getActiveSheet();
+        $sheet->setTitle('DTR');
+
+        $sheet->setCellValue('A1', 'Daily Time Record - ' . ($employee?->full_name ?? 'Employee'));
+        $sheet->setCellValue('A2', 'Period: ' . $selectedDate->format('F Y'));
+        $sheet->mergeCells('A1:G1');
+        $sheet->mergeCells('A2:G2');
+        $sheet->getStyle('A1')->getFont()->setBold(true)->setSize(14);
+
+        $headers = ['Date', 'Day', 'Time In', 'Time Out', 'Tardiness (min)', 'Undertime (min)', 'Status'];
+        foreach ($headers as $col => $header) {
+            $sheet->setCellValue(Coordinate::stringFromColumnIndex($col + 1) . '4', $header);
+        }
+        $sheet->getStyle('A4:G4')->getFont()->setBold(true);
+
+        $row = 5;
+        foreach ($records as $record) {
+            $sheet->setCellValue('A' . $row, $record['date']);
+            $sheet->setCellValue('B' . $row, $record['day']);
+            $sheet->setCellValue('C' . $row, $record['time_in']);
+            $sheet->setCellValue('D' . $row, $record['time_out']);
+            $sheet->setCellValue('E' . $row, $record['tardiness_minutes'] ?: '-');
+            $sheet->setCellValue('F' . $row, $record['undertime_minutes'] ?: '-');
+            $sheet->setCellValue('G' . $row, $record['status']);
+            $row++;
+        }
+
+        foreach (range('A', 'G') as $col) {
+            $sheet->getColumnDimension($col)->setAutoSize(true);
+        }
+
+        $filename = 'DTR_' . str_replace(' ', '_', $employee?->full_name ?? 'Employee') . '_' . $selectedDate->format('F_Y') . '.xlsx';
+        $writer = new Xlsx($spreadsheet);
+
+        return response()->streamDownload(function () use ($writer) {
+            $writer->save('php://output');
+        }, $filename, [
+            'Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        ]);
+    }
+
+    public function uploadDtr(Request $request, EmployeeScheduleService $scheduleService): RedirectResponse
+    {
+        $validated = $request->validate([
+            'biometrics_file' => ['required', 'file', 'mimes:pdf', 'max:10240'],
+        ], [
+            'biometrics_file.required' => 'Please choose a PDF file first.',
+            'biometrics_file.mimes' => 'Only PDF files are accepted (got a different file type).',
+            'biometrics_file.max' => 'The PDF is too large. Maximum allowed is 10 MB.',
+        ]);
+
+        $file = $validated['biometrics_file'];
+
+        try {
+            $parser = new PdfParser();
+            $pdf = $parser->parseFile($file->getRealPath());
+            $text = $pdf->getText();
+
+            $records = $this->parseBiometricText($text);
+
+            if (empty($records)) {
+                return back()->with('error', 'No attendance rows were detected in the PDF. Make sure you uploaded a biometric "Timesheet Report" and not a different document.');
+            }
+
+            $allEmployees = Employee::all();
+            $byExactId = $allEmployees->keyBy('employee_id');
+            $byNormalizedId = [];
+            $byNameIndex = [];
+
+            foreach ($allEmployees as $employee) {
+                $normalizedId = $this->normalizeEmployeeId($employee->employee_id);
+                $byNormalizedId[$normalizedId] = $employee;
+
+                $lastKey = mb_strtolower(trim($employee->last_name));
+                $byNameIndex[$lastKey][] = $employee;
+            }
+
+            $imported = 0;
+            $skipped = 0;
+            $unmatchedEmployees = [];
+            $appliedEmployees = [];
+
+            foreach ($records as $record) {
+                $employee = $this->findEmployeeInMemory($record, $byExactId, $byNormalizedId, $byNameIndex);
+
+                if (! $employee) {
+                    $skipped++;
+                    $label = trim(($record['name'] ?? '') . ' (' . ($record['employee_id'] ?? '—') . ')');
+                    $unmatchedEmployees[$label] = true;
+                    continue;
+                }
+
+                $recordDate = Carbon::parse($record['date']);
+                $timeIn = ! empty($record['time_in']) ? Carbon::parse($record['time_in']) : null;
+                $timeOut = ! empty($record['time_out']) ? Carbon::parse($record['time_out']) : null;
+
+                $evaluation = $scheduleService->evaluateDailyRecord(
+                    $employee,
+                    $recordDate,
+                    $record['time_in'] ?? null,
+                    $record['time_out'] ?? null,
+                );
+
+                AttendanceRecord::updateOrCreate(
+                    [
+                        'employee_id' => $employee->id,
+                        'record_date' => $recordDate->toDateString(),
+                    ],
+                    [
+                        'time_in' => $timeIn?->format('H:i:s'),
+                        'time_out' => $timeOut?->format('H:i:s'),
+                        'scheduled_time_in' => $evaluation['scheduled_time_in'],
+                        'scheduled_time_out' => $evaluation['scheduled_time_out'],
+                        'tardiness_minutes' => $evaluation['tardiness_minutes'],
+                        'undertime_minutes' => $evaluation['undertime_minutes'],
+                        'overtime_minutes' => $evaluation['overtime_minutes'],
+                        'schedule_status' => $evaluation['schedule_status'],
+                        'schedule_notes' => $evaluation['schedule_notes'],
+                        'status' => $evaluation['status'],
+                    ]
+                );
+
+                $imported++;
+                $appliedEmployees[$employee->full_name . ' (' . $employee->employee_id . ')'] = true;
+            }
+
+            $message = "Biometric PDF processed — {$imported} attendance row(s) imported";
+            if ($skipped > 0) {
+                $message .= ", {$skipped} skipped (unmatched employees)";
+            }
+            $message .= '.';
+
+            $redirect = redirect()->route('admin.dtr.index', [
+                'month' => $request->integer('month', (int) now()->month),
+                'year' => $request->integer('year', (int) now()->year),
+                'employee_id' => $request->integer('employee_id') ?: null,
+            ]);
+
+            if (count($unmatchedEmployees) > 0) {
+                $redirect = $redirect->with('unmatched_employees', array_keys($unmatchedEmployees));
+            }
+
+            if (count($appliedEmployees) > 0) {
+                $redirect = $redirect->with('applied_employees', array_keys($appliedEmployees));
+            }
+
+            return $redirect->with('import_stats', [
+                'imported' => $imported,
+                'skipped' => $skipped,
+                'total_records' => count($records),
+            ])->with('success', $message);
+        } catch (\Throwable $e) {
+            report($e);
+            return back()->with('error', 'Failed to process biometric PDF. Please verify the file format and try again.');
+        }
+    }
+
+    /**
+     * Parse biometric text extracted from PDF into structured records.
+     */
+    private function parseBiometricText(string $text): array
+    {
+        $lines = preg_split('/\r?\n/', $text);
+        $lines = array_map('trim', $lines);
+        $lines = array_filter($lines, fn ($line) => $line !== '');
+        $lines = array_values($lines);
+
+        $records = $this->parseNuLipaFormat($lines);
+
+        if (empty($records)) {
+            $records = $this->parseTabularFormat($lines);
+        }
+
+        if (empty($records)) {
+            $records = $this->parseBlockFormat($lines);
+        }
+
+        if (empty($records)) {
+            $records = $this->parseGenericFormat($text);
+        }
+
+        return $records;
+    }
+
+    private function parseNuLipaFormat(array $lines): array
+    {
+        $records = [];
+        $currentEmployee = null;
+
+        foreach ($lines as $line) {
+            if (preg_match('/^Employee:\s*(.+?)\s*\(([^)]+)\)\s*$/i', $line, $matches)) {
+                $currentEmployee = [
+                    'id' => trim($matches[2]),
+                    'name' => trim($matches[1]),
+                ];
+                continue;
+            }
+
+            if (! $currentEmployee) {
+                continue;
+            }
+
+            if (preg_match('/^(Total:|Days\s+Present|Days\s+Absent)/i', $line)) {
+                continue;
+            }
+
+            if (! preg_match('#^(\d{1,2}/\d{1,2}/\d{4})\s+(.+)$#', $line, $matches)) {
+                continue;
+            }
+
+            if (! preg_match_all('/\d{1,2}:\d{2}\s*(?:am|pm)/i', $matches[2], $timeMatches)) {
+                continue;
+            }
+
+            $times = $timeMatches[0];
+            $timeIn = $times[0] ?? null;
+            $timeOut = count($times) > 1 ? end($times) : null;
+
+            $records[] = [
+                'employee_id' => $currentEmployee['id'],
+                'name' => $currentEmployee['name'],
+                'date' => $this->normalizeDate($matches[1]),
+                'time_in' => $timeIn ? $this->normalizeTime($timeIn) : null,
+                'time_out' => $timeOut ? $this->normalizeTime($timeOut) : null,
+            ];
+        }
+
+        return $records;
+    }
+
+    private function parseTabularFormat(array $lines): array
+    {
+        $records = [];
+
+        foreach ($lines as $line) {
+            if (preg_match('/(\d{4}-\d{3})\s*[|\t]\s*(.+?)\s*[|\t]\s*(\d{1,2}[\/-]\d{1,2}[\/-]\d{2,4}|\d{4}[\/-]\d{1,2}[\/-]\d{1,2})\s*[|\t]\s*(\d{1,2}:\d{2}\s*(?:AM|PM)?)\s*[|\t]\s*(\d{1,2}:\d{2}\s*(?:AM|PM)?)/i', $line, $matches)) {
+                $records[] = [
+                    'employee_id' => $matches[1],
+                    'name' => trim($matches[2]),
+                    'date' => $this->normalizeDate($matches[3]),
+                    'time_in' => $this->normalizeTime($matches[4]),
+                    'time_out' => $this->normalizeTime($matches[5]),
+                ];
+                continue;
+            }
+
+            if (preg_match('/(\d{4}-\d{3})\s+([A-Za-z][A-Za-z\s,\.]+?)\s+(\d{1,2}[\/-]\d{1,2}[\/-]\d{2,4}|\d{4}[\/-]\d{1,2}[\/-]\d{1,2})\s+(\d{1,2}:\d{2}\s*(?:AM|PM)?)\s+(\d{1,2}:\d{2}\s*(?:AM|PM)?)/i', $line, $matches)) {
+                $records[] = [
+                    'employee_id' => $matches[1],
+                    'name' => trim($matches[2]),
+                    'date' => $this->normalizeDate($matches[3]),
+                    'time_in' => $this->normalizeTime($matches[4]),
+                    'time_out' => $this->normalizeTime($matches[5]),
+                ];
+                continue;
+            }
+
+            if (preg_match('/(\d{1,2}[\/-]\d{1,2}[\/-]\d{2,4}|\d{4}[\/-]\d{1,2}[\/-]\d{1,2})\s+(\d{1,2}:\d{2}\s*(?:AM|PM)?)\s+(\d{1,2}:\d{2}\s*(?:AM|PM)?)/i', $line, $matches)) {
+                if (! empty($this->currentParseEmployee)) {
+                    $records[] = [
+                        'employee_id' => $this->currentParseEmployee['id'],
+                        'name' => $this->currentParseEmployee['name'],
+                        'date' => $this->normalizeDate($matches[1]),
+                        'time_in' => $this->normalizeTime($matches[2]),
+                        'time_out' => $this->normalizeTime($matches[3]),
+                    ];
+                }
+            }
+
+            if (preg_match('/^(?:Employee|Emp|ID)?[:\s]*(\d{4}-\d{3})\s*[:\-\s]+\s*([A-Za-z][A-Za-z\s,\.]+)/i', $line, $matches)) {
+                $this->currentParseEmployee = [
+                    'id' => $matches[1],
+                    'name' => trim($matches[2]),
+                ];
+            }
+        }
+
+        return $records;
+    }
+
+    private function parseBlockFormat(array $lines): array
+    {
+        $records = [];
+        $currentEmployee = null;
+
+        foreach ($lines as $line) {
+            if (preg_match('/(?:name|employee)\s*[:\-]\s*(?:(\d{4}-\d{3})\s*[:\-\s]*)?\s*([A-Za-z][A-Za-z\s,\.]+)/i', $line, $matches)) {
+                $currentEmployee = [
+                    'id' => $matches[1] ?: '',
+                    'name' => trim($matches[2]),
+                ];
+                continue;
+            }
+
+            if ($currentEmployee && empty($currentEmployee['id']) && preg_match('/(?:id|emp[_\s]?id)\s*[:\-]\s*(\d{4}-\d{3})/i', $line, $matches)) {
+                $currentEmployee['id'] = $matches[1];
+                continue;
+            }
+
+            if ($currentEmployee && preg_match('/(\d{1,2}[\/-]\d{1,2}[\/-]\d{2,4}|\d{4}[\/-]\d{1,2}[\/-]\d{1,2})\s+(\d{1,2}:\d{2}\s*(?:AM|PM)?)\s+(\d{1,2}:\d{2}\s*(?:AM|PM)?)/i', $line, $matches)) {
+                $records[] = [
+                    'employee_id' => $currentEmployee['id'],
+                    'name' => $currentEmployee['name'],
+                    'date' => $this->normalizeDate($matches[1]),
+                    'time_in' => $this->normalizeTime($matches[2]),
+                    'time_out' => $this->normalizeTime($matches[3]),
+                ];
+            }
+        }
+
+        return $records;
+    }
+
+    private function parseGenericFormat(string $text): array
+    {
+        $records = [];
+
+        preg_match_all(
+            '/(\d{4}-\d{3}).*?(\d{1,2}[\/-]\d{1,2}[\/-]\d{2,4}|\d{4}[\/-]\d{1,2}[\/-]\d{1,2})\s+(\d{1,2}:\d{2}\s*(?:AM|PM)?)\s+(\d{1,2}:\d{2}\s*(?:AM|PM)?)/is',
+            $text,
+            $matches,
+            PREG_SET_ORDER
+        );
+
+        foreach ($matches as $match) {
+            $records[] = [
+                'employee_id' => $match[1],
+                'name' => '',
+                'date' => $this->normalizeDate($match[2]),
+                'time_in' => $this->normalizeTime($match[3]),
+                'time_out' => $this->normalizeTime($match[4]),
+            ];
+        }
+
+        return $records;
+    }
+
+    private function normalizeDate(string $date): string
+    {
+        $date = trim($date);
+        $formats = ['Y-m-d', 'm/d/Y', 'd/m/Y', 'm-d-Y', 'd-m-Y', 'm/d/y', 'd/m/y'];
+
+        foreach ($formats as $format) {
+            try {
+                $parsed = Carbon::createFromFormat($format, $date);
+                if ($parsed) {
+                    return $parsed->format('Y-m-d');
+                }
+            } catch (\Throwable $e) {
+                continue;
+            }
+        }
+
+        return Carbon::parse($date)->format('Y-m-d');
+    }
+
+    private function normalizeTime(string $time): string
+    {
+        $time = trim($time);
+
+        if (preg_match('/(\d{1,2}):(\d{2})\s*(AM|PM)/i', $time, $matches)) {
+            $hour = (int) $matches[1];
+            $minute = $matches[2];
+            $period = strtoupper($matches[3]);
+
+            if ($period === 'PM' && $hour !== 12) {
+                $hour += 12;
+            } elseif ($period === 'AM' && $hour === 12) {
+                $hour = 0;
+            }
+
+            return sprintf('%02d:%s', $hour, $minute);
+        }
+
+        return $time;
+    }
+
+    private function buildAttendanceRows(?Employee $employee, ?Carbon $selectedDate = null): Collection
+    {
+        $baseDate = $selectedDate ?? now();
+        $period = CarbonPeriod::create($baseDate->copy()->startOfMonth(), $baseDate->copy()->endOfMonth());
+
+        $dbRecords = collect();
+        $scheduleService = app(EmployeeScheduleService::class);
+        $approvedSubmission = null;
+
+        if ($employee) {
+            $dbRecords = AttendanceRecord::where('employee_id', $employee->id)
+                ->whereBetween('record_date', [$baseDate->copy()->startOfMonth(), $baseDate->copy()->endOfMonth()])
+                ->get()
+                ->keyBy(fn ($record) => $record->record_date->format('Y-m-d'));
+
+            $approvedSubmission = $scheduleService->approvedSubmissionForDate($employee, $baseDate);
+        }
+
+        return collect($period)
+            ->map(function (Carbon $date) use ($employee, $dbRecords, $approvedSubmission) {
+                $dateKey = $date->format('Y-m-d');
+                $dayOfWeekIso = $date->dayOfWeekIso;
+
+                if ($dayOfWeekIso === 7) {
+                    return [
+                        'date' => $date->format('M j'),
+                        'day' => $date->format('D'),
+                        'time_in' => '-',
+                        'time_out' => '-',
+                        'tardiness_minutes' => 0,
+                        'undertime_minutes' => 0,
+                        'status' => 'Weekend',
+                    ];
+                }
+
+                if ($employee && $approvedSubmission) {
+                    $scheduleDay = $approvedSubmission->days->firstWhere('day_index', $dayOfWeekIso);
+
+                    if ($scheduleDay && ! $scheduleDay->has_work) {
+                        return [
+                            'date' => $date->format('M j'),
+                            'day' => $date->format('D'),
+                            'time_in' => '-',
+                            'time_out' => '-',
+                            'tardiness_minutes' => 0,
+                            'undertime_minutes' => 0,
+                            'status' => 'Non-working day',
+                        ];
+                    }
+                }
+
+                if ($dbRecords->has($dateKey)) {
+                    $record = $dbRecords->get($dateKey);
+                    $statusLabel = match ($record->schedule_status) {
+                        'no_schedule' => 'No schedule available',
+                        'non_working_day' => 'Non-working day',
+                        default => ($record->status === 'present') ? 'Present' : 'Not Present',
+                    };
+
+                    return [
+                        'date' => $date->format('M j'),
+                        'day' => $date->format('D'),
+                        'time_in' => $record->time_in ? Carbon::parse($record->time_in)->format('H:i') : '-',
+                        'time_out' => $record->time_out ? Carbon::parse($record->time_out)->format('H:i') : '-',
+                        'tardiness_minutes' => $record->tardiness_minutes,
+                        'undertime_minutes' => $record->undertime_minutes,
+                        'schedule_status' => $record->schedule_status,
+                        'schedule_notes' => $record->schedule_notes,
+                        'status' => $statusLabel,
+                    ];
+                }
+
+                if ($date->isAfter(now())) {
+                    return [
+                        'date' => $date->format('M j'),
+                        'day' => $date->format('D'),
+                        'time_in' => '-',
+                        'time_out' => '-',
+                        'tardiness_minutes' => 0,
+                        'undertime_minutes' => 0,
+                        'status' => '-',
+                    ];
+                }
+
+                return [
+                    'date' => $date->format('M j'),
+                    'day' => $date->format('D'),
+                    'time_in' => '-',
+                    'time_out' => '-',
+                    'tardiness_minutes' => 0,
+                    'undertime_minutes' => 0,
+                    'status' => 'Not Present',
+                ];
+            });
     }
 
     public function editDtrRecord(AttendanceRecord $record): View
@@ -259,12 +836,42 @@ class OperationsController extends Controller
     public function wfhIndex(): View
     {
         $submissions = WfhMonitoringSubmission::query()
-            ->with('employee')
-            ->latest('wfh_date')
+            ->with(['employee.department', 'reviewer'])
+            ->orderByDesc('wfh_date')
+            ->orderByDesc('submitted_at')
             ->get();
 
+        $mapped = $submissions->map(function (WfhMonitoringSubmission $submission): array {
+            return [
+                'id' => $submission->id,
+                'employee_name' => $submission->employee?->full_name ?? 'Unknown employee',
+                'department' => $submission->employee?->department?->name ?? '—',
+                'date' => $submission->wfh_date?->format('M d, Y') ?? '—',
+                'time_in' => $submission->time_in?->format('h:i A') ?? '—',
+                'time_out' => $submission->time_out?->format('h:i A') ?? '—',
+                'status' => $submission->status,
+                'status_label' => ucfirst($submission->status),
+                'status_class' => match ($submission->status) {
+                    WfhMonitoringSubmission::STATUS_APPROVED => 'bg-emerald-100 text-emerald-700',
+                    WfhMonitoringSubmission::STATUS_DECLINED => 'bg-rose-100 text-rose-700',
+                    default => 'bg-amber-100 text-amber-700',
+                },
+                'submitted_at' => $submission->submitted_at?->format('M d, Y h:i A') ?? '—',
+                'reviewed_at' => $submission->reviewed_at?->format('M d, Y h:i A') ?? '—',
+                'review_notes' => $submission->review_notes,
+                'has_file' => filled($submission->file_path),
+                'original_filename' => $submission->original_filename,
+            ];
+        });
+
         return view('admin.wfh-monitoring.index', [
-            'submissions' => $submissions,
+            'submissions' => $mapped,
+            'stats' => [
+                'all' => $mapped->count(),
+                'pending' => $mapped->where('status', WfhMonitoringSubmission::STATUS_PENDING)->count(),
+                'approved' => $mapped->where('status', WfhMonitoringSubmission::STATUS_APPROVED)->count(),
+                'declined' => $mapped->where('status', WfhMonitoringSubmission::STATUS_DECLINED)->count(),
+            ],
         ]);
     }
 
@@ -289,6 +896,170 @@ class OperationsController extends Controller
 
         return redirect()->route('admin.wfh-monitoring.index')
             ->with('success', "Cleared {$count} WFH records and corresponding attendance.");
+    }
+
+    public function viewWfhFile(WfhMonitoringSubmission $submission): RedirectResponse
+    {
+        if (! $submission->file_path) {
+            return back()->with('error', 'No file was attached to this WFH submission.');
+        }
+
+        if (! $this->storage->isEnabled()) {
+            return back()->with('error', 'File storage is not configured. Please contact the administrator.');
+        }
+
+        $url = $this->storage->createSignedUrl($submission->file_path, 300);
+
+        if (! $url) {
+            return back()->with('error', 'Unable to generate a download link. Please try again.');
+        }
+
+        return redirect()->away($url);
+    }
+
+    public function deleteWfhSubmission(WfhMonitoringSubmission $submission): RedirectResponse
+    {
+        $employeeName = $submission->employee?->full_name ?? 'Unknown Employee';
+        $wfhDate = $submission->wfh_date?->format('M d, Y') ?? 'Unknown Date';
+
+        if (! empty($submission->file_path) && $this->storage->isEnabled()) {
+            $this->storage->delete($submission->file_path);
+        }
+
+        $submission->forceDelete();
+
+        return redirect()->route('admin.wfh-monitoring.index')
+            ->with('success', "WFH submission deleted for {$employeeName} on {$wfhDate}.");
+    }
+
+    public function approveWfhSubmission(Request $request, WfhMonitoringSubmission $submission, EmployeeScheduleService $scheduleService): RedirectResponse
+    {
+        $validated = $request->validate([
+            'confirmed' => ['accepted', 'in:1'],
+            'review_notes' => ['nullable', 'string', 'max:1000'],
+        ]);
+
+        if ($submission->status === WfhMonitoringSubmission::STATUS_APPROVED) {
+            return back()->with('error', 'This WFH submission is already approved.');
+        }
+
+        $submission->loadMissing('employee');
+
+        if (! $submission->employee) {
+            return back()->with('error', 'The employee profile for this submission could not be found.');
+        }
+
+        DB::transaction(function () use ($request, $submission, $scheduleService, $validated): void {
+            $submission->update([
+                'status' => WfhMonitoringSubmission::STATUS_APPROVED,
+                'reviewed_by' => $request->user()?->id,
+                'reviewed_at' => now(),
+                'review_notes' => $validated['review_notes'] ?? null,
+            ]);
+
+            $attendancePayload = [
+                'time_in' => $submission->time_in?->format('H:i:s'),
+                'time_out' => $submission->time_out?->format('H:i:s'),
+                'scheduled_time_in' => $submission->time_in?->format('H:i:s'),
+                'scheduled_time_out' => $submission->time_out?->format('H:i:s'),
+                'tardiness_minutes' => 0,
+                'undertime_minutes' => 0,
+                'overtime_minutes' => 0,
+                'schedule_status' => 'validated',
+                'schedule_notes' => 'WFH approved by Admin',
+                'status' => 'present',
+            ];
+
+            if ($submission->wfh_date && $submission->employee) {
+                $existing = AttendanceRecord::query()->where('employee_id', $submission->employee_id)->whereDate('record_date', $submission->wfh_date)->first();
+
+                if ($existing) {
+                    $attendancePayload['scheduled_time_in'] = $submission->time_in?->format('H:i:s') ?? $existing->scheduled_time_in?->format('H:i:s');
+                    $attendancePayload['scheduled_time_out'] = $submission->time_out?->format('H:i:s') ?? $existing->scheduled_time_out?->format('H:i:s');
+                    $attendancePayload['time_in'] = $submission->time_in?->format('H:i:s') ?? $existing->time_in?->format('H:i:s');
+                    $attendancePayload['time_out'] = $submission->time_out?->format('H:i:s') ?? $existing->time_out?->format('H:i:s');
+                }
+            }
+
+            AttendanceRecord::updateOrCreate(
+                [
+                    'employee_id' => $submission->employee_id,
+                    'record_date' => $submission->wfh_date?->toDateString(),
+                ],
+                $attendancePayload
+            );
+
+            $announcement = Announcement::forceCreate([
+                'title' => 'WFH monitoring approved',
+                'content' => sprintf('Your WFH monitoring sheet for %s was approved by Admin.', $submission->wfh_date?->format('F d, Y') ?? 'your submitted date'),
+                'priority' => 'medium',
+                'target_user_type' => User::TYPE_EMPLOYEE,
+                'published_at' => now(),
+                'is_published' => true,
+                'created_by' => $request->user()?->id,
+            ]);
+
+            $employeeUser = User::query()->where('email', $submission->employee->email)->first();
+
+            if ($employeeUser) {
+                AnnouncementNotification::create([
+                    'announcement_id' => $announcement->id,
+                    'user_id' => $employeeUser->id,
+                    'is_read' => false,
+                    'read_at' => null,
+                    'redirect_url' => route('employee.attendance'),
+                ]);
+            }
+        });
+
+        return back()->with('success', 'WFH submission approved and attendance was updated.');
+    }
+
+    public function declineWfhSubmission(Request $request, WfhMonitoringSubmission $submission): RedirectResponse
+    {
+        $validated = $request->validate([
+            'confirmed' => ['accepted', 'in:1'],
+            'review_notes' => ['required', 'string', 'max:1000'],
+        ]);
+
+        if ($submission->status === WfhMonitoringSubmission::STATUS_DECLINED) {
+            return back()->with('error', 'This WFH submission is already declined.');
+        }
+
+        $submission->loadMissing('employee');
+
+        $submission->update([
+            'status' => WfhMonitoringSubmission::STATUS_DECLINED,
+            'reviewed_by' => $request->user()?->id,
+            'reviewed_at' => now(),
+            'review_notes' => $validated['review_notes'],
+        ]);
+
+        $employeeUser = $submission->employee
+            ? User::query()->where('email', $submission->employee->email)->first()
+            : null;
+
+        if ($employeeUser) {
+            $announcement = Announcement::forceCreate([
+                'title' => 'WFH monitoring declined',
+                'content' => sprintf('Your WFH monitoring sheet for %s was declined by Admin. Notes: %s', $submission->wfh_date?->format('F d, Y') ?? 'your submitted date', $validated['review_notes']),
+                'priority' => 'medium',
+                'target_user_type' => User::TYPE_EMPLOYEE,
+                'published_at' => now(),
+                'is_published' => true,
+                'created_by' => $request->user()?->id,
+            ]);
+
+            AnnouncementNotification::create([
+                'announcement_id' => $announcement->id,
+                'user_id' => $employeeUser->id,
+                'is_read' => false,
+                'read_at' => null,
+                'redirect_url' => route('employee.wfh-monitoring.index'),
+            ]);
+        }
+
+        return back()->with('success', 'WFH submission declined. The employee has been notified.');
     }
 
     /**
@@ -515,6 +1286,10 @@ class OperationsController extends Controller
             return back()->with('error', 'Missing expected column(s) in the Excel header: '.implode(', ', $missingColumns).'. Expected headers: Leave ID, Employee ID, Employee Name, Application, Type, Date Filed, Date From, Date To, Total Hours, Status.');
         }
 
+        // ------------------------------------------------------------------
+        // PERFORMANCE FIX: Pre-load ALL employees into memory once.
+        // Also build a normalized ID map for flexible matching.
+        // ------------------------------------------------------------------
         $allEmployees = Employee::all();
         $byExactId = $allEmployees->keyBy('employee_id');
         $byNormalizedId = [];
@@ -552,6 +1327,7 @@ class OperationsController extends Controller
                 continue;
             }
 
+            // Try ID-based match first, then name fallback for robustness.
             $employee = $this->findEmployeeInMemory(
                 [
                     'employee_id' => $employeeCode,

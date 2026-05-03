@@ -68,6 +68,9 @@
                             </td>
                             <td class="px-6 py-4 text-sm text-slate-600">{{ $credential['expires_at'] ?? 'N/A' }}</td>
                             <td class="px-6 py-4 text-sm flex gap-2">
+                                @if($credential['has_file'])
+                                    <a href="{{ route('admin.credentials.view', $credential['id']) }}" target="_blank" rel="noopener" class="text-slate-700 hover:text-slate-900 font-medium">View</a>
+                                @endif
                                 <a href="{{ route('admin.credentials.edit', $credential['id']) }}" class="text-blue-600 hover:text-blue-700 font-medium">Edit</a>
                                 <button onclick="if(confirm('Delete this credential?')) { document.getElementById('delete-{{ $credential['id'] }}').submit(); }" class="text-red-600 hover:text-red-700 font-medium">Delete</button>
                                 <form id="delete-{{ $credential['id'] }}" action="{{ route('admin.credentials.destroy', $credential['id']) }}" method="POST" style="display:none;">
