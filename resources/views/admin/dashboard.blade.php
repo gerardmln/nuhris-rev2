@@ -29,6 +29,16 @@
             <p class="text-xs font-medium text-slate-500">Pending Verifications</p>
             <p class="mt-1 text-4xl font-extrabold">{{ $stats['pending_verifications'] }}</p>
         </article>
+        <article class="rounded-xl border border-dashed border-[#ffdc00] bg-[#fff9d6] p-4 shadow-sm sm:col-span-2 xl:col-span-1">
+            <div class="flex items-start justify-between gap-3">
+                <div>
+                    <p class="text-xs font-medium uppercase tracking-[0.18em] text-[#7a6500]">Module</p>
+                    <p class="mt-1 text-2xl font-extrabold text-[#24358a]">Activity Logs</p>
+                </div>
+                <span class="rounded-full bg-[#00386f] px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-white">Coming soon</span>
+            </div>
+            <p class="mt-3 text-sm leading-6 text-slate-700">A dedicated admin activity log center will be added here for audit trails, but it is not active yet.</p>
+        </article>
     </div>
 
     <div class="grid grid-cols-1 gap-4">
