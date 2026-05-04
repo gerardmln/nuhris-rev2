@@ -153,7 +153,7 @@ class PortalController extends Controller
         ]));
 
         $allocations = collect($this->config('admin.leave.allocations', [
-            ['employee_type' => 'Regular Employee', 'vacation' => 15, 'sick' => 15, 'emergency' => 3],
+            ['employee_type' => 'Full - Time', 'vacation' => 15, 'sick' => 15, 'emergency' => 3],
             ['employee_type' => 'Probationary', 'vacation' => 5, 'sick' => 5, 'emergency' => 3],
             ['employee_type' => 'Faculty (Full-time)', 'vacation' => 15, 'sick' => 15, 'emergency' => 3],
         ]))->map(fn (array $row) => [...$row, 'total' => $row['vacation'] + $row['sick'] + $row['emergency']]);

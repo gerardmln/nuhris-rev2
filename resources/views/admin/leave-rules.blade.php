@@ -39,7 +39,7 @@
             <div class="mt-3 space-y-2 text-sm">
                 <select class="w-full rounded-lg border border-slate-300 px-3 py-2">
                     <option>Regular Employee</option>
-                    <option>Probationary</option>
+                        <option>Probationary Employees</option>
                     <option>Faculty (Full - Time)</option>
                     <option>Faculty (Part - Time)</option>
                     <option>Contractual</option>
@@ -82,7 +82,7 @@
                     </div>
                     <select name="applies_to" class="w-full rounded-xl border border-slate-300 px-3 py-2">
                         <option>All Employees</option>
-                        <option>Regular Employees</option>
+                        <option>Full - Time Employees</option>
                         <option>Faculty only</option>
                         <option>Female Employees</option>
                         <option>Male Employees</option>

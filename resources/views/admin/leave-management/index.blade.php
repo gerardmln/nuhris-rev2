@@ -15,10 +15,10 @@
         <div class="flex items-center gap-2">
             <button
                 type="button"
-                onclick="if(confirm('Reset ALL leave data for every employee card? This will clear all leave requests and balances.')) { document.getElementById('reset-all-leaves-form').submit(); }"
+                onclick="if(confirm('Reset the used leave balances for all employees? This will set all used leave counters to 0 (VL, SL, EL). Leave credits will remain intact.')) { document.getElementById('reset-all-leaves-form').submit(); }"
                 class="rounded-lg border border-red-300 bg-red-50 px-4 py-2 text-sm font-semibold text-red-700 hover:bg-red-100"
             >
-                Reset All Leave Data
+                Reset All Used Leave
             </button>
             <button data-open-modal="upload-leaves-modal" class="rounded-lg bg-[#00386f] px-4 py-2 text-sm font-semibold text-white hover:bg-[#002f5d]">Upload Leave File</button>
         </div>
@@ -97,8 +97,8 @@
                 </select>
                 <select name="employee_class" onchange="this.form.submit()" class="rounded-md border border-slate-300 px-2 py-2 text-sm focus:border-blue-400 focus:outline-none min-w-[14rem]">
                     <option value="all" @selected(($filters['employee_class'] ?? 'all') === 'all')>All Employee Types</option>
-                    <option value="regular" @selected(($filters['employee_class'] ?? '') === 'regular')>Regular Employees</option>
-                    <option value="irregular" @selected(($filters['employee_class'] ?? '') === 'irregular')>Non-Regular Employee</option>
+                    <option value="regular" @selected(($filters['employee_class'] ?? '') === 'regular')>Full - Time Employees</option>
+                    <option value="irregular" @selected(($filters['employee_class'] ?? '') === 'irregular')>Probationary Employees</option>
                 </select>
             </form>
         </div>
@@ -113,7 +113,7 @@
                         <div><p class="text-xl font-bold text-[#1f2b5d]">{{ $card['name'] }}</p><p class="text-sm text-slate-500">{{ $card['department'] }}</p></div>
                     </div>
                     <span class="inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold {{ ($card['employee_status'] ?? 'non-regular') === 'regular' ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800' }}">
-                        {{ $card['employee_status_label'] ?? 'Non-Regular' }}
+                        {{ $card['employee_status_label'] ?? 'Probationary' }}
                     </span>
                 </div>
                 <div class="mb-3 flex flex-wrap gap-2">
@@ -130,7 +130,7 @@
                         <span class="inline-flex items-center rounded-full bg-red-100 px-2.5 py-1 text-[11px] font-semibold text-red-800">Absences: {{ $card['absences'] }}</span>
                     @endif
                     @if (($card['employee_status'] ?? 'non-regular') === 'non-regular' && (($card['vacation_used'] ?? 0) > 0 || ($card['sick_used'] ?? 0) > 0 || ($card['emergency_used'] ?? 0) > 0))
-                        <span class="inline-flex items-center rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-semibold text-slate-700">Tracked for non-regular employee</span>
+                        <span class="inline-flex items-center rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-semibold text-slate-700">Tracked for probationary employee</span>
                     @endif
                 </div>
                 <div class="grid grid-cols-3 gap-2 text-center">

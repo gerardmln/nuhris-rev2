@@ -13,22 +13,36 @@
             <div>
                 <p class="text-xs font-semibold uppercase tracking-[0.18em] text-blue-700">Employee-submitted schedules</p>
                 <h2 class="mt-1 text-3xl font-bold text-slate-900">Schedule Management</h2>
-                <p class="mt-1 text-sm text-slate-600">Review submitted weekly schedules, then reset them when the employee needs to resubmit.</p>
+                   <p class="mt-1 text-sm text-slate-600">Review submitted weekly schedules, edit them, or clear them when needed.</p>
             </div>
-            <button
-                type="button"
-                onclick="if(confirm('Reset ALL schedules? This will clear every schedule submission and force employees to resubmit.')) { document.getElementById('reset-all-schedules-form').submit(); }"
-                class="rounded-lg bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-700"
-            >
-                Reset All Schedules
-            </button>
+            <div class="flex flex-col gap-3 sm:flex-row">
+                <form method="GET" action="{{ route('admin.schedules.index') }}" class="flex gap-2">
+                    <input
+                        type="search"
+                        name="search"
+                        value="{{ $search }}"
+                        placeholder="Search employees"
+                        class="w-full rounded-md border border-slate-300 px-4 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100 sm:w-72"
+                    >
+                    @if ($search !== '')
+                        <a href="{{ route('admin.schedules.index') }}" class="rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50">
+                            Clear
+                        </a>
+                    @endif
+                    <button type="submit" class="rounded-md bg-slate-800 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-900">
+                        Search
+                    </button>
+                </form>
+                <form method="POST" action="{{ route('admin.schedules.reset-all') }}" onsubmit="return confirm('Clear all schedules? Employees will need to resubmit their weekly schedules.');">
+                    @csrf
+                    @method('DELETE')
+                    <button type="submit" class="rounded-md bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-700">
+                        Clear All Schedule
+                    </button>
+                </form>
+            </div>
         </div>
     </div>
-
-    <form id="reset-all-schedules-form" action="{{ route('admin.schedules.reset-all') }}" method="POST" class="hidden">
-        @csrf
-        @method('DELETE')
-    </form>
 
     <div class="grid grid-cols-2 gap-3 sm:grid-cols-4">
         <article class="rounded-xl border border-slate-300 bg-white p-4 shadow-sm">
@@ -113,13 +127,17 @@
                             </button>
                         </form>
                     @endif
-                    <form method="POST" action="{{ route('admin.schedules.employee.reset', $employee) }}" onsubmit="return confirm('Reset schedule for this employee?');">
-                        @csrf
-                        @method('DELETE')
-                        <button type="submit" class="rounded-md bg-slate-800 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-900">
-                            Reset Employee Schedule
-                        </button>
-                    </form>
+                        @if ($submission)
+                            <a href="{{ route('admin.schedules.edit', $submission) }}" class="rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700">
+                                Edit Schedule
+                            </a>
+                            <form method="POST" action="{{ route('admin.schedules.clear', $submission) }}" onsubmit="return confirm('Clear this schedule? The employee will need to resubmit.');" class="inline">
+                                @csrf
+                                <button type="submit" class="rounded-md bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-700">
+                                    Clear Schedule
+                                </button>
+                            </form>
+                        @endif
                 </div>
             </article>
         @empty

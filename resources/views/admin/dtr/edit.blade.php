@@ -52,9 +52,6 @@
                 <select id="status" name="status" class="w-full px-4 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
                     <option value="present" @selected(old('status', $record->status) === 'present')>Present</option>
                     <option value="absent" @selected(old('status', $record->status) === 'absent')>Absent</option>
-                    <option value="late" @selected(old('status', $record->status) === 'late')>Late</option>
-                    <option value="undertime" @selected(old('status', $record->status) === 'undertime')>Undertime</option>
-                    <option value="overtime" @selected(old('status', $record->status) === 'overtime')>Overtime</option>
                 </select>
                 @error('status')
                     <span class="text-red-600 text-sm mt-1 block">{{ $message }}</span>
@@ -64,18 +61,36 @@
             <!-- Remarks -->
             <div class="mb-6">
                 <label for="remarks" class="block text-sm font-medium text-slate-900 mb-2">Remarks</label>
-                <textarea id="remarks" name="remarks" rows="4" class="w-full px-4 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">{{ old('remarks', $record->remarks) }}</textarea>
+                <textarea id="remarks" name="remarks" rows="4" class="w-full px-4 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">{{ old('remarks', $record->schedule_notes) }}</textarea>
                 @error('remarks')
                     <span class="text-red-600 text-sm mt-1 block">{{ $message }}</span>
                 @enderror
             </div>
 
+            <div class="grid grid-cols-2 gap-4">
+                <div class="mb-6">
+                    <label for="tardiness_minutes" class="block text-sm font-medium text-slate-900 mb-2">Tardiness (minutes)</label>
+                    <input type="number" id="tardiness_minutes" name="tardiness_minutes" min="0" value="{{ old('tardiness_minutes', $record->tardiness_minutes) }}" class="w-full px-4 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                    @error('tardiness_minutes')
+                        <span class="text-red-600 text-sm mt-1 block">{{ $message }}</span>
+                    @enderror
+                </div>
+
+                <div class="mb-6">
+                    <label for="undertime_minutes" class="block text-sm font-medium text-slate-900 mb-2">Undertime (minutes)</label>
+                    <input type="number" id="undertime_minutes" name="undertime_minutes" min="0" value="{{ old('undertime_minutes', $record->undertime_minutes) }}" class="w-full px-4 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                    @error('undertime_minutes')
+                        <span class="text-red-600 text-sm mt-1 block">{{ $message }}</span>
+                    @enderror
+                </div>
+            </div>
+
             <!-- Actions -->
-            <div class="flex gap-4">
-                <button type="submit" class="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg font-medium">
+            <div class="flex flex-col gap-3 sm:flex-row sm:items-center">
+                <button type="submit" class="w-full sm:w-auto rounded-lg px-6 py-3 font-semibold text-white shadow-lg transition hover:shadow-xl focus:outline-none focus:ring-4 focus:ring-blue-300" style="background-color:#1d4ed8 !important; border:1px solid #1d4ed8 !important; color:#ffffff !important;">
                     Save Changes
                 </button>
-                <a href="{{ route('admin.dtr.index') }}" class="bg-slate-300 hover:bg-slate-400 text-slate-900 px-6 py-2 rounded-lg font-medium">
+                <a href="{{ route('admin.dtr.index') }}" class="w-full sm:w-auto rounded-lg border border-slate-300 bg-white px-6 py-3 text-center font-semibold text-slate-700 transition hover:bg-slate-50">
                     Cancel
                 </a>
             </div>

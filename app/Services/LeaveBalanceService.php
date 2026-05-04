@@ -324,4 +324,50 @@ class LeaveBalanceService
     {
         return self::DEDUCTIBLE_LEAVE_TYPES;
     }
+
+    /**
+     * Reset used leave balances for an employee.
+     * Sets remaining_days to total_credits and deletes approved leave requests.
+     * Keeps leave balance records (permanent record of credits).
+     */
+    public function resetUsedLeaveBalance(Employee $employee): void
+    {
+        $employmentType = strtolower(trim($employee->employment_type ?? ''));
+        
+        // Determine if Faculty or ASP
+        $typeKey = $this->determineEmployeeTypeKey($employmentType);
+        
+        if (!$typeKey) {
+            // Part-time and unknown employee types should not have leave balances
+            LeaveBalance::query()->where('employee_id', $employee->id)->delete();
+            return;
+        }
+
+        // Delete all approved leave requests for deductible leave types
+        LeaveRequest::query()
+            ->where('employee_id', $employee->id)
+            ->where('status', 'approved')
+            ->whereIn('leave_type', self::DEDUCTIBLE_LEAVE_TYPES)
+            ->delete();
+
+        // Get base credits for this employment type
+        $baseCredits = self::BASE_CREDITS[$typeKey];
+
+        // For each deductible leave type, set remaining to full credits
+        foreach ($baseCredits as $leaveType => $baseAmount) {
+            // Calculate total credits (base + accrual)
+            $totalCredits = $this->calculateTotalCredits($employee, $leaveType, $baseAmount);
+
+            // Update balance - set remaining to total credits (no deduction)
+            LeaveBalance::updateOrCreate(
+                [
+                    'employee_id' => $employee->id,
+                    'leave_type' => $leaveType,
+                ],
+                [
+                    'remaining_days' => $totalCredits,
+                ]
+            );
+        }
+    }
 }

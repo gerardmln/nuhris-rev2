@@ -268,8 +268,10 @@ class OperationsController extends Controller
         });
 
         $periods = collect();
-        for ($i = 0; $i < 12; $i++) {
-            $d = now()->subMonths($i);
+        $systemStart = Carbon::create(2026, 4, 1)->startOfMonth();
+        $currentMonth = now()->startOfMonth();
+        for ($i = 0; $i <= $systemStart->diffInMonths($currentMonth); $i++) {
+            $d = $currentMonth->copy()->subMonths($i);
             $periods->push([
                 'label' => $d->format('F Y'),
                 'month' => $d->month,
@@ -723,14 +725,25 @@ class OperationsController extends Controller
     private function buildAttendanceRows(?Employee $employee, ?Carbon $selectedDate = null): Collection
     {
         $baseDate = $selectedDate ?? now();
-        $period = CarbonPeriod::create($baseDate->copy()->startOfMonth(), $baseDate->copy()->endOfMonth());
+        $periodStart = $baseDate->copy()->startOfMonth();
+        $periodEnd = $baseDate->copy()->endOfMonth();
+
+        if ($periodEnd->gt(now()->endOfDay())) {
+            $periodEnd = now()->endOfDay();
+        }
+
+        if ($periodEnd->lt($periodStart)) {
+            return collect();
+        }
+
+        $period = CarbonPeriod::create($periodStart, $periodEnd);
 
         $dbRecords = collect();
         $scheduleService = app(EmployeeScheduleService::class);
 
         if ($employee) {
             $dbRecords = AttendanceRecord::where('employee_id', $employee->id)
-                ->whereBetween('record_date', [$baseDate->copy()->startOfMonth(), $baseDate->copy()->endOfMonth()])
+                ->whereBetween('record_date', [$periodStart, $periodEnd])
                 ->get()
                 ->keyBy(fn ($record) => $record->record_date->format('Y-m-d'));
         }
@@ -742,6 +755,7 @@ class OperationsController extends Controller
 
                 if ($dayOfWeekIso === 7) {
                     return [
+                        'iso_date' => $date->format('Y-m-d'),
                         'date' => $date->format('M j'),
                         'day' => $date->format('D'),
                         'time_in' => '-',
@@ -749,6 +763,7 @@ class OperationsController extends Controller
                         'tardiness_minutes' => 0,
                         'undertime_minutes' => 0,
                         'status' => 'Weekend',
+                        'is_future' => $date->gt(now()->endOfDay()),
                     ];
                 }
 
@@ -768,8 +783,10 @@ class OperationsController extends Controller
                     };
 
                     return [
+                        'iso_date' => $date->format('Y-m-d'),
                         'date' => $date->format('M j'),
                         'day' => $date->format('D'),
+                        'attendance_id' => $record?->id,
                         'time_in' => $record?->time_in ? Carbon::parse($record->time_in)->format('H:i') : '-',
                         'time_out' => $record?->time_out ? Carbon::parse($record->time_out)->format('H:i') : '-',
                         'tardiness_minutes' => $evaluation['tardiness_minutes'],
@@ -777,11 +794,13 @@ class OperationsController extends Controller
                         'schedule_status' => $evaluation['schedule_status'],
                         'schedule_notes' => $evaluation['schedule_notes'],
                         'status' => $statusLabel,
+                        'is_future' => $date->gt(now()->endOfDay()),
                     ];
                 }
 
                 if ($date->isAfter(now())) {
                     return [
+                        'iso_date' => $date->format('Y-m-d'),
                         'date' => $date->format('M j'),
                         'day' => $date->format('D'),
                         'time_in' => '-',
@@ -789,10 +808,12 @@ class OperationsController extends Controller
                         'tardiness_minutes' => 0,
                         'undertime_minutes' => 0,
                         'status' => '-',
+                        'is_future' => $date->gt(now()->endOfDay()),
                     ];
                 }
 
                 return [
+                    'iso_date' => $date->format('Y-m-d'),
                     'date' => $date->format('M j'),
                     'day' => $date->format('D'),
                     'time_in' => '-',
@@ -800,8 +821,41 @@ class OperationsController extends Controller
                     'tardiness_minutes' => 0,
                     'undertime_minutes' => 0,
                     'status' => 'Not Present',
+                    'is_future' => $date->gt(now()->endOfDay()),
                 ];
             });
+    }
+
+    public function createDtrRecord(Request $request): RedirectResponse
+    {
+        $validated = $request->validate([
+            'employee_id' => 'required|integer|exists:employees,id',
+            'record_date' => 'required|date_format:Y-m-d',
+        ]);
+
+        $exists = AttendanceRecord::query()
+            ->where('employee_id', $validated['employee_id'])
+            ->whereDate('record_date', $validated['record_date'])
+            ->exists();
+
+        if (! $exists) {
+            $record = AttendanceRecord::create([
+                'employee_id' => $validated['employee_id'],
+                'record_date' => $validated['record_date'],
+                'time_in' => null,
+                'time_out' => null,
+                'tardiness_minutes' => 0,
+                'undertime_minutes' => 0,
+                'status' => 'absent',
+            ]);
+        } else {
+            $record = AttendanceRecord::query()
+                ->where('employee_id', $validated['employee_id'])
+                ->whereDate('record_date', $validated['record_date'])
+                ->first();
+        }
+
+        return redirect()->route('admin.dtr.edit', $record->id);
     }
 
     public function editDtrRecord(AttendanceRecord $record): View
@@ -828,11 +882,28 @@ class OperationsController extends Controller
         $validated = $request->validate([
             'time_in' => 'nullable|date_format:H:i',
             'time_out' => 'nullable|date_format:H:i',
-            'status' => 'nullable|string|in:present,absent,late,undertime,overtime',
+            'status' => 'nullable|string|in:present,absent',
             'remarks' => 'nullable|string|max:500',
+            'tardiness_minutes' => 'nullable|integer|min:0',
+            'undertime_minutes' => 'nullable|integer|min:0',
         ]);
 
-        $record->update($validated);
+        $payload = [];
+
+        if (array_key_exists('time_in', $validated)) {
+            $payload['time_in'] = $validated['time_in'] ? (strlen($validated['time_in']) === 5 ? $validated['time_in'].':00' : $validated['time_in']) : null;
+        }
+
+        if (array_key_exists('time_out', $validated)) {
+            $payload['time_out'] = $validated['time_out'] ? (strlen($validated['time_out']) === 5 ? $validated['time_out'].':00' : $validated['time_out']) : null;
+        }
+
+        $payload['status'] = $validated['status'] ?? $record->status;
+        $payload['tardiness_minutes'] = isset($validated['tardiness_minutes']) ? (int) $validated['tardiness_minutes'] : ($record->tardiness_minutes ?? 0);
+        $payload['undertime_minutes'] = isset($validated['undertime_minutes']) ? (int) $validated['undertime_minutes'] : ($record->undertime_minutes ?? 0);
+        $payload['schedule_notes'] = $validated['remarks'] ?? $record->schedule_notes;
+
+        $record->update($payload);
 
         return redirect()->route('admin.dtr.index')
             ->with('success', 'DTR record updated successfully.');
@@ -1250,7 +1321,7 @@ class OperationsController extends Controller
                 'has_data' => $requests->isNotEmpty() || $balances->isNotEmpty(),
                 'leave_types' => $usedByType->keys()->toArray(),
                 'employee_status' => $isRegularEmployee ? 'regular' : 'non-regular',
-                'employee_status_label' => $isRegularEmployee ? 'Regular' : 'Non-Regular',
+                'employee_status_label' => $isRegularEmployee ? 'Full - Time' : 'Probationary',
                 'absences' => $absencesByEmployee->get($employee->id, 0),
             ];
         });
@@ -1259,9 +1330,11 @@ class OperationsController extends Controller
         $totalVacationUsed = (float) $leaveCards->sum('vacation_used');
         $totalSickUsed = (float) $leaveCards->sum('sick_used');
 
-        $monthOptions = collect(range(0, 11))
-            ->map(function ($offset) {
-                $date = now()->startOfMonth()->subMonths($offset);
+        $systemStart = Carbon::create(2026, 4, 1)->startOfMonth();
+        $currentMonth = now()->startOfMonth();
+        $monthOptions = collect(range(0, $systemStart->diffInMonths($currentMonth)))
+            ->map(function ($offset) use ($currentMonth) {
+                $date = $currentMonth->copy()->subMonths($offset);
 
                 return [
                     'value' => $date->format('Y-m'),
@@ -1290,24 +1363,33 @@ class OperationsController extends Controller
 
     public function clearAllLeaves(): RedirectResponse
     {
-        DB::transaction(function () {
-            LeaveRequest::query()->forceDelete();
-            LeaveBalance::query()->forceDelete();
+        $leaveBalanceService = app(LeaveBalanceService::class);
+        $employees = Employee::all();
+        $resetCount = 0;
+
+        DB::transaction(function () use ($leaveBalanceService, $employees, &$resetCount) {
+            foreach ($employees as $employee) {
+                // Reset used leave balances - sets remaining to full credits
+                $leaveBalanceService->resetUsedLeaveBalance($employee);
+                $resetCount++;
+            }
         });
 
         return redirect()->route('admin.leave.index')
-            ->with('success', 'All leave requests and balances have been cleared.');
+            ->with('success', "Used leave balances have been reset for {$resetCount} employee(s). Leave credits remain intact.");
     }
 
     public function resetEmployeeLeaves(Employee $employee): RedirectResponse
     {
-        DB::transaction(function () use ($employee) {
-            LeaveRequest::query()->where('employee_id', $employee->id)->forceDelete();
-            LeaveBalance::query()->where('employee_id', $employee->id)->forceDelete();
+        $leaveBalanceService = app(LeaveBalanceService::class);
+
+        DB::transaction(function () use ($leaveBalanceService, $employee) {
+            // Reset used leave balance - sets remaining to full credits
+            $leaveBalanceService->resetUsedLeaveBalance($employee);
         });
 
         return redirect()->route('admin.leave.index')
-            ->with('success', "Leave data for {$employee->full_name} has been reset.");
+            ->with('success', "Used leave balance has been reset for {$employee->full_name}. Leave credits remain intact.");
     }
 
     public function uploadLeaves(Request $request, LeaveMonitoringService $leaveMonitoringService): RedirectResponse

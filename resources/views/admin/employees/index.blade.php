@@ -7,7 +7,6 @@
     <div class="space-y-5 px-5 py-5 sm:px-6 sm:py-6">
         <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
             <div>
-                <h1 class="text-[30px] font-bold leading-none text-[#1f2b5d]">Employees</h1>
                 <p class="text-sm text-slate-500">Manage faculty and staff records</p>
             </div>
             <a href="{{ route('admin.employees.create') }}" class="rounded-lg bg-[#00386f] px-4 py-2 text-sm font-semibold text-white hover:bg-[#002f5d]">+ Add Employee</a>
@@ -36,8 +35,8 @@
                 <div class="md:col-span-2">
                     <select name="employee_class" onchange="this.form.submit()" class="w-full min-w-[14rem] rounded-md border border-slate-300 px-2 py-2 text-sm focus:border-blue-400 focus:outline-none">
                         <option value="all" @selected(($filters['employee_class'] ?? 'all') === 'all')>All Employee Types</option>
-                        <option value="regular" @selected(($filters['employee_class'] ?? '') === 'regular')>Regular Employees</option>
-                        <option value="irregular" @selected(($filters['employee_class'] ?? '') === 'irregular')>Non-Regular Employee</option>
+                        <option value="regular" @selected(($filters['employee_class'] ?? '') === 'regular')>Full - Time Employees</option>
+                        <option value="irregular" @selected(($filters['employee_class'] ?? '') === 'irregular')>Probationary Employees</option>
                     </select>
                 </div>
             </form>

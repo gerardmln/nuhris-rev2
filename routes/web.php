@@ -257,6 +257,7 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'user.type:1'])->gro
         Route::post('/employee/{employee}/clear', [AdminOperationsController::class, 'clearEmployeeDtr'])->whereNumber('employee')->name('clear-employee');
         Route::get('/{record}/edit', [AdminOperationsController::class, 'editDtrRecord'])->whereNumber('record')->name('edit');
         Route::put('/{record}', [AdminOperationsController::class, 'updateDtrRecord'])->whereNumber('record')->name('update');
+        Route::post('/create', [AdminOperationsController::class, 'createDtrRecord'])->name('create');
     });
 
     // ========== WFH MANAGEMENT (ADMIN-ONLY) ==========
@@ -283,6 +284,9 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'user.type:1'])->gro
         Route::post('/{submission}/approve', [AdminScheduleManagementController::class, 'approve'])->whereNumber('submission')->name('approve');
         Route::delete('/employee/{employee}', [AdminScheduleManagementController::class, 'resetEmployee'])->whereNumber('employee')->name('employee.reset');
         Route::delete('/', [AdminScheduleManagementController::class, 'resetAll'])->name('reset-all');
+            Route::get('/{submission}/edit', [AdminScheduleManagementController::class, 'edit'])->whereNumber('submission')->name('edit');
+            Route::put('/{submission}', [AdminScheduleManagementController::class, 'update'])->whereNumber('submission')->name('update');
+            Route::post('/{submission}/clear', [AdminScheduleManagementController::class, 'clear'])->whereNumber('submission')->name('clear');
     });
 
     // ========== ROLE MANAGEMENT ==========

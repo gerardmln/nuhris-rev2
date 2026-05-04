@@ -31,24 +31,7 @@
         </article>
     </div>
 
-    <div class="grid grid-cols-1 gap-4 xl:grid-cols-3">
-        <article class="rounded-xl border border-slate-300 bg-white p-4 shadow-sm xl:col-span-2">
-            <h3 class="text-2xl font-bold text-[#24358a]">Attendance Trends</h3>
-            <div class="mt-3 h-56 rounded-lg border border-slate-200 bg-slate-50"></div>
-        </article>
-
-        <article class="rounded-xl border border-slate-300 bg-white p-4 shadow-sm">
-            <h3 class="text-2xl font-bold text-[#24358a]">Role Distribution</h3>
-            <div class="mt-3 h-56 rounded-lg border border-slate-200 bg-slate-50"></div>
-        </article>
-    </div>
-
-    <div class="grid grid-cols-1 gap-4 xl:grid-cols-2">
-        <article class="rounded-xl border border-slate-300 bg-white p-4 shadow-sm">
-            <h3 class="text-2xl font-bold text-[#24358a]">Compliance Progress by Term</h3>
-            <div class="mt-3 h-64 rounded-lg border border-slate-200 bg-slate-50"></div>
-        </article>
-
+    <div class="grid grid-cols-1 gap-4">
         <article class="rounded-xl border border-slate-300 bg-white p-4 shadow-sm">
             <h3 class="text-2xl font-bold text-[#24358a]">Recent System Activity</h3>
             <ul class="mt-3 space-y-2 text-sm text-slate-700">

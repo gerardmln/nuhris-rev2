@@ -6,6 +6,9 @@ use App\Http\Controllers\Controller;
 use App\Models\Employee;
 use App\Models\EmployeeScheduleSubmission;
 use App\Services\EmployeeScheduleService;
+    use App\Models\Announcement;
+    use App\Models\AnnouncementNotification;
+    use App\Models\User;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -15,8 +18,20 @@ class ScheduleManagementController extends Controller
 {
     public function index(EmployeeScheduleService $scheduleService): View
     {
+        $search = request()->string('search')->trim()->toString();
+
         $employees = Employee::query()
             ->with('department')
+            ->when($search !== '', function ($query) use ($search): void {
+                $query->where(function ($employeeQuery) use ($search): void {
+                    $employeeQuery->where('first_name', 'ilike', '%'.$search.'%')
+                        ->orWhere('last_name', 'ilike', '%'.$search.'%')
+                        ->orWhere('email', 'ilike', '%'.$search.'%')
+                        ->orWhereHas('department', function ($departmentQuery) use ($search): void {
+                            $departmentQuery->where('name', 'ilike', '%'.$search.'%');
+                        });
+                });
+            })
             ->orderBy('last_name')
             ->orderBy('first_name')
             ->get();
@@ -60,6 +75,7 @@ class ScheduleManagementController extends Controller
         return view('admin.schedule-management.index', [
             'employeeSchedules' => $employeeSchedules,
             'counts' => $counts,
+            'search' => $search,
         ]);
     }
 
@@ -133,4 +149,116 @@ class ScheduleManagementController extends Controller
         return redirect()->route('admin.schedules.index')
             ->with('success', 'All schedules were reset. Employees must resubmit before DTR validation resumes.');
     }
+
+        public function edit(EmployeeScheduleSubmission $submission): View
+        {
+            $submission->loadMissing(['employee', 'days']);
+
+            return view('admin.schedule-management.edit', [
+                'submission' => $submission,
+                'employee' => $submission->employee,
+                'days' => $submission->days,
+            ]);
+        }
+
+        public function update(Request $request, EmployeeScheduleSubmission $submission): RedirectResponse
+        {
+            $validated = $request->validate([
+                'days' => ['required', 'array', 'size:7'],
+                'days.*.day_name' => ['required', 'string'],
+                'days.*.has_work' => ['required', 'boolean'],
+                'days.*.time_in' => ['nullable', 'date_format:H:i'],
+                'days.*.time_out' => ['nullable', 'date_format:H:i'],
+            ]);
+
+            $submission->loadMissing('employee');
+
+            DB::transaction(function () use ($submission, $validated, $request): void {
+                // Update schedule days
+                $submission->days()->delete();
+
+                foreach ($validated['days'] as $dayData) {
+                    $submission->days()->create([
+                        'day_name' => $dayData['day_name'],
+                        'has_work' => $dayData['has_work'],
+                        'time_in' => $dayData['has_work'] && $dayData['time_in'] ? $dayData['time_in'] : null,
+                        'time_out' => $dayData['has_work'] && $dayData['time_out'] ? $dayData['time_out'] : null,
+                    ]);
+                }
+
+                // Mark as reviewed
+                $submission->update([
+                    'reviewed_by' => $request->user()?->id,
+                    'reviewed_at' => now(),
+                    'review_notes' => 'Schedule edited by Admin',
+                ]);
+            });
+
+            // Notify employee of schedule update
+            $this->notifyEmployee(
+                $request,
+                $submission,
+                'Schedule updated by Admin',
+                sprintf('Your weekly schedule for %s %s was updated by the administrator. Please check your schedule.', $submission->semester_label, $submission->academic_year)
+            );
+
+            return redirect()->route('admin.schedules.index')
+                ->with('success', 'Schedule for '.$submission->employee?->full_name.' has been updated. Employee has been notified.');
+        }
+
+        public function clear(Request $request, EmployeeScheduleSubmission $submission): RedirectResponse
+        {
+            $submission->loadMissing('employee');
+
+            $submission->update([
+                'status' => EmployeeScheduleSubmission::STATUS_RESET,
+                'reviewed_by' => $request->user()?->id,
+                'reviewed_at' => now(),
+                'review_notes' => 'Cleared by Admin',
+                'is_current' => false,
+            ]);
+
+            $submission->days()->delete();
+
+            // Notify employee
+            $this->notifyEmployee(
+                $request,
+                $submission,
+                'Schedule cleared',
+                sprintf('Your weekly schedule for term "%s" was cleared by the administrator. Please resubmit a revised schedule.', $submission->semester_label)
+            );
+
+            return redirect()->route('admin.schedules.index')
+                ->with('success', 'Schedule cleared successfully. Employee has been notified.');
+        }
+
+        private function notifyEmployee(Request $request, EmployeeScheduleSubmission $submission, string $title, string $content): void
+        {
+            $employee = $submission->employee;
+            if (!$employee) {
+                return;
+            }
+
+            $announcement = Announcement::forceCreate([
+                'title' => $title,
+                'content' => $content,
+                'priority' => 'high',
+                'target_user_type' => User::TYPE_EMPLOYEE,
+                'published_at' => now(),
+                'is_published' => true,
+                'created_by' => $request->user()?->id,
+            ]);
+
+            $employeeUser = User::query()->where('email', $employee->email)->first();
+
+            if ($employeeUser) {
+                AnnouncementNotification::create([
+                    'announcement_id' => $announcement->id,
+                    'user_id' => $employeeUser->id,
+                    'is_read' => false,
+                    'read_at' => null,
+                    'redirect_url' => route('employee.attendance'),
+                ]);
+            }
+        }
 }

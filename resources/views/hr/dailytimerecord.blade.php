@@ -10,6 +10,21 @@
 </head>
 <body class="min-h-screen bg-[#eceef1] text-slate-900 antialiased">
     <main class="mx-auto max-w-7xl space-y-5 px-4 py-6 sm:px-6">
+        {{-- Error Notification --}}
+        @if ($errors->has('error'))
+            <div class="rounded-xl border border-red-300 bg-red-50 p-4 shadow-sm" role="alert">
+                <div class="flex items-start gap-3">
+                    <svg class="mt-0.5 h-5 w-5 flex-shrink-0 text-red-600" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                        <path d="M12 8v4m0 4v.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                    </svg>
+                    <div>
+                        <h3 class="font-semibold text-red-900">Error Loading Daily Time Record</h3>
+                        <p class="text-sm text-red-800">{{ $errors->first('error') }}</p>
+                    </div>
+                </div>
+            </div>
+        @endif
+
         <a href="{{ route('timekeeping.index') }}" class="inline-flex items-center gap-2 text-sm font-semibold text-slate-700 hover:text-slate-900" data-testid="back-to-timekeeping">
             <span>&larr;</span>
             Back to Time Keeping

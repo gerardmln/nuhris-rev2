@@ -13,6 +13,11 @@ use Illuminate\Support\Collection;
 
 class EmployeeScheduleService
 {
+    private function systemStartDate(): Carbon
+    {
+        return Carbon::create(2026, 4, 1)->startOfDay();
+    }
+
     /**
      * @return array<int, array{index:int,key:string,label:string}>
      */
@@ -254,7 +259,7 @@ class EmployeeScheduleService
      */
     public function countDtrAbsencesWithContext(Employee $employee, Carbon $startDate, Carbon $endDate, ?Collection $approvedLeaves = null, ?EmployeeScheduleSubmission $submission = null): int
     {
-        $periodStart = $startDate->copy()->startOfDay();
+        $periodStart = $startDate->copy()->startOfDay()->max($this->systemStartDate());
         $periodEnd = $endDate->copy()->startOfDay();
 
         if ($periodEnd->lt($periodStart)) {

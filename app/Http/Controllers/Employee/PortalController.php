@@ -15,6 +15,7 @@ use App\Models\User;
 use App\Services\EmployeeScheduleService;
 use App\Services\LeaveBalanceService;
 use App\Services\SupabaseStorageService;
+use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Support\Facades\DB;
@@ -329,15 +330,31 @@ class PortalController extends Controller
     public function attendance(Request $request, EmployeeScheduleService $scheduleService): View
     {
         $employee = Employee::query()->where('email', $request->user()->email)->first();
-        $records = $employee
-            ? $employee->attendanceRecords()->orderByDesc('record_date')->get()
+        $systemStart = Carbon::create(2026, 4, 1)->startOfDay();
+        $selectedDate = Carbon::createFromDate(
+            $request->integer('year', now()->year),
+            $request->integer('month', now()->month),
+            1
+        );
+
+        $periodStart = $selectedDate->copy()->startOfMonth()->max($systemStart);
+        $periodEnd = $selectedDate->isSameMonth(now())
+            ? now()->copy()->endOfDay()
+            : ($selectedDate->isFuture() ? $selectedDate->copy()->startOfMonth()->subDay()->endOfDay() : $selectedDate->copy()->endOfMonth());
+
+        $records = $employee && $periodEnd->gte($periodStart)
+            ? $employee->attendanceRecords()
+                ->whereBetween('record_date', [$periodStart->toDateString(), $periodEnd->toDateString()])
+                ->orderByDesc('record_date')
+                ->get()
             : collect();
         $currentSchedule = $employee ? $scheduleService->currentSubmission($employee) : null;
         $canEditSchedule = ! ($currentSchedule && in_array($currentSchedule->status, [EmployeeScheduleSubmission::STATUS_PENDING, EmployeeScheduleSubmission::STATUS_APPROVED], true));
 
         $absenceStart = $employee?->hire_date
             ? \Carbon\Carbon::parse($employee->hire_date)
-            : ($records->last()?->record_date ?? now());
+            : ($records->last()?->record_date ?? $selectedDate->copy()->startOfMonth());
+        $absenceStart = $absenceStart->copy()->startOfDay()->max($systemStart);
 
         $totals = [
             'tardiness' => $records->sum('tardiness_minutes'),
@@ -435,6 +452,8 @@ class PortalController extends Controller
             'scheduleDayMap' => $scheduleDays,
             'canEditSchedule' => $canEditSchedule,
             'overallResult' => $overallResult,
+            'selectedMonth' => $selectedDate->month,
+            'selectedYear' => $selectedDate->year,
         ]);
     }
 

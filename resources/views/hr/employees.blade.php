@@ -130,8 +130,8 @@
                         <div class="md:col-span-2">
                             <select name="employee_class" onchange="this.form.submit()" class="w-full min-w-[14rem] rounded-md border border-slate-300 px-2 py-2 text-sm focus:border-blue-400 focus:outline-none">
                                 <option value="all" @selected(($filters['employee_class'] ?? 'all') === 'all')>All Employee Types</option>
-                                <option value="regular" @selected(($filters['employee_class'] ?? '') === 'regular')>Regular Employees</option>
-                                <option value="irregular" @selected(($filters['employee_class'] ?? '') === 'irregular')>Non-Regular Employee</option>
+                                <option value="regular" @selected(($filters['employee_class'] ?? '') === 'regular')>Full - Time Employees</option>
+                                <option value="irregular" @selected(($filters['employee_class'] ?? '') === 'irregular')>Probationary Employees</option>
                             </select>
                         </div>
                     </form>

@@ -259,6 +259,7 @@ class OperationsController extends Controller
         $year = $request->integer('year', (int) now()->year);
         $search = $request->string('search')->trim()->toString();
         $employeeClass = $request->string('employee_class')->toString() ?: 'all';
+        $departmentId = $request->string('department_id')->toString();
         $selectedDate = Carbon::createFromDate($year, $month, 1);
 
         $query = Employee::query()
@@ -275,6 +276,16 @@ class OperationsController extends Controller
                   ->orWhereHas('department', fn ($dq) => $dq->where('name', 'ILIKE', "%{$search}%"));
             });
         }
+
+        // Department filter: support special 'asp' token for Admin Support Personnel
+        $query->when($departmentId === 'asp', function ($q) {
+            $q->where(function ($nested) {
+                $nested
+                    ->where('employment_type', 'Admin Support Personnel')
+                    ->orWhereHas('department', fn ($department) => $department->where('name', 'ASP'));
+            });
+        })
+        ->when(filled($departmentId) && $departmentId !== 'asp', fn ($q) => $q->where('department_id', $departmentId));
 
         $leaveMonitoringService->applyEmployeeClassFilter($query, $employeeClass, $selectedDate);
 
@@ -315,8 +326,10 @@ class OperationsController extends Controller
 
         // Generate period options (last 12 months)
         $periods = collect();
-        for ($i = 0; $i < 12; $i++) {
-            $d = now()->subMonths($i);
+        $systemStart = Carbon::create(2026, 4, 1)->startOfMonth();
+        $currentMonth = now()->startOfMonth();
+        for ($i = 0; $i <= $systemStart->diffInMonths($currentMonth); $i++) {
+            $d = $currentMonth->copy()->subMonths($i);
             $periods->push([
                 'label' => $d->format('F Y'),
                 'month' => $d->month,
@@ -332,145 +345,171 @@ class OperationsController extends Controller
             'selectedYear' => $year,
             'search' => $search,
             'employeeClass' => $employeeClass,
+            'departments' => Department::query()->facultySchools()->orderBy('name')->get(),
+            'filters' => [
+                'department_id' => $departmentId,
+                'employee_class' => $employeeClass,
+                'search' => $search,
+            ],
         ]);
     }
 
     public function dailyTimeRecord(Request $request): View
     {
-        $scheduleService = app(EmployeeScheduleService::class);
-        $employeeId = $request->integer('employee');
-        $month = $request->integer('month', (int) now()->month);
-        $year = $request->integer('year', (int) now()->year);
-        $selectedDate = Carbon::createFromDate($year, $month, 1);
+        try {
+            $scheduleService = app(EmployeeScheduleService::class);
+            $employeeId = $request->integer('employee');
+            $month = $request->integer('month', (int) now()->month);
+            $year = $request->integer('year', (int) now()->year);
+            $selectedDate = Carbon::createFromDate($year, $month, 1);
 
-        $employee = Employee::query()
-            ->with('department')
-            ->when($employeeId, fn ($query) => $query->whereKey($employeeId))
-            ->orderBy('last_name')
-            ->orderBy('first_name')
-            ->first();
+            $employee = Employee::query()
+                ->with('department')
+                ->when($employeeId, fn ($query) => $query->whereKey($employeeId))
+                ->orderBy('last_name')
+                ->orderBy('first_name')
+                ->first();
 
-        $records = $this->buildAttendanceRows($employee, $selectedDate);
+            $records = $this->buildAttendanceRows($employee, $selectedDate);
 
-        $summary = [
-            'present_days' => $records->where('status', 'Present')->count(),
-            'absent_days' => $records->where('status', 'Not Present')->count(),
-            'tardiness_total' => $records->sum('tardiness_minutes'),
-            'undertime_total' => $records->sum('undertime_minutes'),
-        ];
+            $summary = [
+                'present_days' => $records->where('status', 'Present')->count(),
+                'absent_days' => $records->where('status', 'Not Present')->count(),
+                'tardiness_total' => $records->sum('tardiness_minutes'),
+                'undertime_total' => $records->sum('undertime_minutes'),
+            ];
 
-        $periods = collect();
-        for ($i = 0; $i < 12; $i++) {
-            $d = now()->subMonths($i);
-            $periods->push([
-                'label' => $d->format('F Y'),
-                'month' => $d->month,
-                'year' => $d->year,
-                'selected' => $d->month === $month && $d->year === $year,
+            $periods = collect();
+            $systemStart = Carbon::create(2026, 4, 1)->startOfMonth();
+            $currentMonth = now()->startOfMonth();
+            for ($i = 0; $i <= $systemStart->diffInMonths($currentMonth); $i++) {
+                $d = $currentMonth->copy()->subMonths($i);
+                $periods->push([
+                    'label' => $d->format('F Y'),
+                    'month' => $d->month,
+                    'year' => $d->year,
+                    'selected' => $d->month === $month && $d->year === $year,
+                ]);
+            }
+
+            return view('hr.dailytimerecord', [
+                'employee' => $employee,
+                'records' => $records,
+                'summary' => $summary,
+                'period_label' => $selectedDate->format('F Y'),
+                'schedule_summary' => $scheduleService->summarizeSubmission($employee ? $scheduleService->approvedSubmissionForDate($employee, $selectedDate) : null),
+                'periods' => $periods,
+                'selectedMonth' => $month,
+                'selectedYear' => $year,
             ]);
+        } catch (\Throwable $e) {
+            return back()
+                ->withError('Unable to load Daily Time Record. The system encountered a timeout. Please try again or contact support if the issue persists.')
+                ->withInput();
         }
-
-        return view('hr.dailytimerecord', [
-            'employee' => $employee,
-            'records' => $records,
-            'summary' => $summary,
-            'period_label' => $selectedDate->format('F Y'),
-            'schedule_summary' => $scheduleService->summarizeSubmission($employee ? $scheduleService->approvedSubmissionForDate($employee, $selectedDate) : null),
-            'periods' => $periods,
-            'selectedMonth' => $month,
-            'selectedYear' => $year,
-        ]);
     }
 
     public function exportDtrPdf(Request $request)
     {
-        $scheduleService = app(EmployeeScheduleService::class);
-        $employeeId = $request->integer('employee');
-        $month = $request->integer('month', (int) now()->month);
-        $year = $request->integer('year', (int) now()->year);
-        $selectedDate = Carbon::createFromDate($year, $month, 1);
+        try {
+            $scheduleService = app(EmployeeScheduleService::class);
+            $employeeId = $request->integer('employee');
+            $month = $request->integer('month', (int) now()->month);
+            $year = $request->integer('year', (int) now()->year);
+            $selectedDate = Carbon::createFromDate($year, $month, 1);
 
-        $employee = Employee::query()->with('department')
-            ->when($employeeId, fn ($q) => $q->whereKey($employeeId))
-            ->orderBy('last_name')->first();
+            $employee = Employee::query()->with('department')
+                ->when($employeeId, fn ($q) => $q->whereKey($employeeId))
+                ->orderBy('last_name')->first();
 
-        $records = $this->buildAttendanceRows($employee, $selectedDate);
-        $summary = [
-            'present_days' => $records->where('status', 'Present')->count(),
-            'absent_days' => $records->where('status', 'Not Present')->count(),
-            'tardiness_total' => $records->sum('tardiness_minutes'),
-            'undertime_total' => $records->sum('undertime_minutes'),
-        ];
+            $records = $this->buildAttendanceRows($employee, $selectedDate);
+            $summary = [
+                'present_days' => $records->where('status', 'Present')->count(),
+                'absent_days' => $records->where('status', 'Not Present')->count(),
+                'tardiness_total' => $records->sum('tardiness_minutes'),
+                'undertime_total' => $records->sum('undertime_minutes'),
+            ];
 
-        $pdf = \Barryvdh\DomPDF\Facade\Pdf::loadView('hr.dtr-export-pdf', [
-            'employee' => $employee,
-            'records' => $records,
-            'summary' => $summary,
-            'period_label' => $selectedDate->format('F Y'),
-            'schedule_summary' => $scheduleService->summarizeSubmission($employee ? $scheduleService->approvedSubmissionForDate($employee, $selectedDate) : null),
-        ]);
+            $pdf = \Barryvdh\DomPDF\Facade\Pdf::loadView('hr.dtr-export-pdf', [
+                'employee' => $employee,
+                'records' => $records,
+                'summary' => $summary,
+                'period_label' => $selectedDate->format('F Y'),
+                'schedule_summary' => $scheduleService->summarizeSubmission($employee ? $scheduleService->approvedSubmissionForDate($employee, $selectedDate) : null),
+            ]);
 
-        $filename = 'DTR_' . str_replace(' ', '_', $employee?->full_name ?? 'Employee') . '_' . $selectedDate->format('F_Y') . '.pdf';
-        return $pdf->download($filename);
+            $filename = 'DTR_' . str_replace(' ', '_', $employee?->full_name ?? 'Employee') . '_' . $selectedDate->format('F_Y') . '.pdf';
+            return $pdf->download($filename);
+        } catch (\Throwable $e) {
+            return back()
+                ->withError('Unable to export PDF. The system encountered a timeout. Please try again or contact support if the issue persists.')
+                ->withInput();
+        }
     }
 
     public function exportDtrExcel(Request $request)
     {
-        $scheduleService = app(EmployeeScheduleService::class);
-        $employeeId = $request->integer('employee');
-        $month = $request->integer('month', (int) now()->month);
-        $year = $request->integer('year', (int) now()->year);
-        $selectedDate = Carbon::createFromDate($year, $month, 1);
+        try {
+            $scheduleService = app(EmployeeScheduleService::class);
+            $employeeId = $request->integer('employee');
+            $month = $request->integer('month', (int) now()->month);
+            $year = $request->integer('year', (int) now()->year);
+            $selectedDate = Carbon::createFromDate($year, $month, 1);
 
-        $employee = Employee::query()->with('department')
-            ->when($employeeId, fn ($q) => $q->whereKey($employeeId))
-            ->orderBy('last_name')->first();
+            $employee = Employee::query()->with('department')
+                ->when($employeeId, fn ($q) => $q->whereKey($employeeId))
+                ->orderBy('last_name')->first();
 
-        $records = $this->buildAttendanceRows($employee, $selectedDate);
+            $records = $this->buildAttendanceRows($employee, $selectedDate);
 
-        $spreadsheet = new \PhpOffice\PhpSpreadsheet\Spreadsheet();
-        $sheet = $spreadsheet->getActiveSheet();
-        $sheet->setTitle('DTR');
+            $spreadsheet = new \PhpOffice\PhpSpreadsheet\Spreadsheet();
+            $sheet = $spreadsheet->getActiveSheet();
+            $sheet->setTitle('DTR');
 
-        // Header
-        $sheet->setCellValue('A1', 'Daily Time Record - ' . ($employee?->full_name ?? 'Employee'));
-        $sheet->setCellValue('A2', 'Period: ' . $selectedDate->format('F Y'));
-        $sheet->mergeCells('A1:G1');
-        $sheet->mergeCells('A2:G2');
-        $sheet->getStyle('A1')->getFont()->setBold(true)->setSize(14);
+            // Header
+            $sheet->setCellValue('A1', 'Daily Time Record - ' . ($employee?->full_name ?? 'Employee'));
+            $sheet->setCellValue('A2', 'Period: ' . $selectedDate->format('F Y'));
+            $sheet->mergeCells('A1:G1');
+            $sheet->mergeCells('A2:G2');
+            $sheet->getStyle('A1')->getFont()->setBold(true)->setSize(14);
 
-        // Column headers
-        $headers = ['Date', 'Day', 'Time In', 'Time Out', 'Tardiness (min)', 'Undertime (min)', 'Status'];
-        foreach ($headers as $col => $h) {
-            $sheet->setCellValue(Coordinate::stringFromColumnIndex($col + 1).'4', $h);
+            // Column headers
+            $headers = ['Date', 'Day', 'Time In', 'Time Out', 'Tardiness (min)', 'Undertime (min)', 'Status'];
+            foreach ($headers as $col => $h) {
+                $sheet->setCellValue(Coordinate::stringFromColumnIndex($col + 1).'4', $h);
+            }
+            $sheet->getStyle('A4:G4')->getFont()->setBold(true);
+
+            // Data
+            $row = 5;
+            foreach ($records as $r) {
+                $sheet->setCellValue('A'.$row, $r['date']);
+                $sheet->setCellValue('B'.$row, $r['day']);
+                $sheet->setCellValue('C'.$row, $r['time_in']);
+                $sheet->setCellValue('D'.$row, $r['time_out']);
+                $sheet->setCellValue('E'.$row, $r['tardiness_minutes'] ?: '-');
+                $sheet->setCellValue('F'.$row, $r['undertime_minutes'] ?: '-');
+                $sheet->setCellValue('G'.$row, $r['status']);
+                $row++;
+            }
+
+            foreach (range('A', 'G') as $col) {
+                $sheet->getColumnDimension($col)->setAutoSize(true);
+            }
+
+            $filename = 'DTR_' . str_replace(' ', '_', $employee?->full_name ?? 'Employee') . '_' . $selectedDate->format('F_Y') . '.xlsx';
+            $writer = new \PhpOffice\PhpSpreadsheet\Writer\Xlsx($spreadsheet);
+
+            return response()->streamDownload(function () use ($writer) {
+                $writer->save('php://output');
+            }, $filename, [
+                'Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            ]);
+        } catch (\Throwable $e) {
+            return back()
+                ->withError('Unable to export Excel. The system encountered a timeout. Please try again or contact support if the issue persists.')
+                ->withInput();
         }
-        $sheet->getStyle('A4:G4')->getFont()->setBold(true);
-
-        // Data
-        $row = 5;
-        foreach ($records as $r) {
-            $sheet->setCellValue('A'.$row, $r['date']);
-            $sheet->setCellValue('B'.$row, $r['day']);
-            $sheet->setCellValue('C'.$row, $r['time_in']);
-            $sheet->setCellValue('D'.$row, $r['time_out']);
-            $sheet->setCellValue('E'.$row, $r['tardiness_minutes'] ?: '-');
-            $sheet->setCellValue('F'.$row, $r['undertime_minutes'] ?: '-');
-            $sheet->setCellValue('G'.$row, $r['status']);
-            $row++;
-        }
-
-        foreach (range('A', 'G') as $col) {
-            $sheet->getColumnDimension($col)->setAutoSize(true);
-        }
-
-        $filename = 'DTR_' . str_replace(' ', '_', $employee?->full_name ?? 'Employee') . '_' . $selectedDate->format('F_Y') . '.xlsx';
-        $writer = new \PhpOffice\PhpSpreadsheet\Writer\Xlsx($spreadsheet);
-
-        return response()->streamDownload(function () use ($writer) {
-            $writer->save('php://output');
-        }, $filename, [
-            'Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-        ]);
     }
 
     public function leaveManagement(Request $request): View
@@ -601,7 +640,7 @@ class OperationsController extends Controller
                 'has_data' => $requests->isNotEmpty() || $balances->isNotEmpty(),
                 'leave_types' => $usedByType->keys()->toArray(),
                 'employee_status' => $isRegularEmployee ? 'regular' : 'non-regular',
-                'employee_status_label' => $isRegularEmployee ? 'Regular' : 'Non-Regular',
+                'employee_status_label' => $isRegularEmployee ? 'Full - Time' : 'Probationary',
                 'absences' => $absencesByEmployee->get($employee->id, 0),
             ];
         });
@@ -610,9 +649,11 @@ class OperationsController extends Controller
         $totalVacationUsed = (float) $leaveCards->sum('vacation_used');
         $totalSickUsed = (float) $leaveCards->sum('sick_used');
 
-        $monthOptions = collect(range(0, 11))
-            ->map(function ($offset) {
-                $date = now()->startOfMonth()->subMonths($offset);
+        $systemStart = Carbon::create(2026, 4, 1)->startOfMonth();
+        $currentMonth = now()->startOfMonth();
+        $monthOptions = collect(range(0, $systemStart->diffInMonths($currentMonth)))
+            ->map(function ($offset) use ($currentMonth) {
+                $date = $currentMonth->copy()->subMonths($offset);
 
                 return [
                     'value' => $date->format('Y-m'),
@@ -1696,7 +1737,17 @@ class OperationsController extends Controller
     private function buildAttendanceRows(?Employee $employee, ?Carbon $selectedDate = null): Collection
     {
         $baseDate = $selectedDate ?? now();
-        $period = CarbonPeriod::create($baseDate->copy()->startOfMonth(), $baseDate->copy()->endOfMonth());
+        $systemStart = Carbon::create(2026, 4, 1)->startOfDay();
+        $periodStart = $baseDate->copy()->startOfMonth()->max($systemStart);
+        $periodEnd = $baseDate->isSameMonth(now())
+            ? now()->copy()->endOfDay()
+            : ($baseDate->isFuture() ? $baseDate->copy()->startOfMonth()->subDay()->endOfDay() : $baseDate->copy()->endOfMonth());
+
+        if ($periodEnd->lt($periodStart)) {
+            return collect();
+        }
+
+        $period = CarbonPeriod::create($periodStart, $periodEnd);
 
         $dbRecords = collect();
         $scheduleService = app(EmployeeScheduleService::class);
@@ -1727,6 +1778,20 @@ class OperationsController extends Controller
                 }
 
                 if ($employee) {
+                    if ($date->isAfter(now())) {
+                        return [
+                            'date' => $date->format('M j'),
+                            'day' => $date->format('D'),
+                            'time_in' => '-',
+                            'time_out' => '-',
+                            'tardiness_minutes' => 0,
+                            'undertime_minutes' => 0,
+                            'schedule_status' => null,
+                            'schedule_notes' => null,
+                            'status' => '-',
+                        ];
+                    }
+
                     $record = $dbRecords->get($dateKey);
                     $evaluation = $scheduleService->evaluateDailyRecord(
                         $employee,

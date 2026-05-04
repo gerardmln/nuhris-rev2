@@ -13,12 +13,6 @@
             <p class="text-sm text-slate-500">View biometric attendance records, print DTR, and upload DTR files</p>
         </div>
         <div class="flex flex-wrap items-center gap-2">
-            <form method="POST" action="{{ route('admin.dtr.clear-all') }}" onsubmit="return confirm('Clear ALL DTR records for the selected period?');">
-                @csrf
-                <input type="hidden" name="month" value="{{ $selectedMonth }}">
-                <input type="hidden" name="year" value="{{ $selectedYear }}">
-                <button type="submit" class="rounded-lg border border-red-300 bg-white px-4 py-2 text-sm font-semibold text-red-700 shadow-sm transition hover:bg-red-50">Clear All</button>
-            </form>
             <button data-open-modal="upload-dtr-modal" class="rounded-lg bg-[#00386f] px-4 py-2 text-sm font-semibold text-white hover:bg-[#002f5d] transition">Upload DTR PDF</button>
         </div>
     </div>
@@ -140,6 +134,7 @@
                         <th class="px-3 py-2">Tardiness</th>
                         <th class="px-3 py-2">Undertime</th>
                         <th class="px-3 py-2">Status</th>
+                        <th class="px-3 py-2">Actions</th>
                     </tr>
                 </thead>
                 <tbody class="divide-y divide-slate-200">
@@ -163,6 +158,27 @@
                                 @else
                                     <span class="text-slate-400">{{ $record['status'] }}</span>
                                 @endif
+                            </td>
+                            <td class="px-3 py-2 relative">
+                                <div class="relative inline-block text-left">
+                                    <button type="button" class="row-actions-toggle inline-flex h-8 w-8 items-center justify-center rounded-full bg-slate-100 text-slate-600 hover:bg-slate-200" aria-expanded="false" aria-haspopup="true">&middot;&middot;&middot;</button>
+                                    <div class="row-actions-menu hidden absolute right-2 top-full mt-1 w-36 origin-top-right rounded-md bg-white shadow-lg ring-1 ring-black ring-opacity-5 focus:outline-none z-50">
+                                        <div class="py-1">
+                                            @if(!empty($record['attendance_id']))
+                                                <a href="{{ route('admin.dtr.edit', $record['attendance_id']) }}" class="block px-4 py-2 text-sm text-slate-700 hover:bg-slate-50">Edit</a>
+                                            @elseif(empty($record['is_future']))
+                                                <form method="POST" action="{{ route('admin.dtr.create') }}">
+                                                    @csrf
+                                                    <input type="hidden" name="employee_id" value="{{ $employee?->id }}">
+                                                    <input type="hidden" name="record_date" value="{{ $record['iso_date'] }}">
+                                                    <button type="submit" class="w-full text-left px-4 py-2 text-sm text-slate-700 hover:bg-slate-50">Add</button>
+                                                </form>
+                                            @else
+                                                <span class="block px-4 py-2 text-sm text-slate-400">—</span>
+                                            @endif
+                                        </div>
+                                    </div>
+                                </div>
                             </td>
                         </tr>
                     @empty
@@ -227,12 +243,7 @@
                 @endunless
                 <p class="mt-3 text-xs text-slate-500">Schedule: {{ $card['schedule_summary'] }}</p>
                 <a href="{{ route('admin.dtr.index', ['employee_id' => $card['id'], 'month' => $selectedMonth, 'year' => $selectedYear]) }}" class="mt-3 block w-full rounded-md bg-[#00386f] px-3 py-2 text-center text-sm font-semibold text-white hover:bg-[#002f5d] transition">View DTR</a>
-                <form method="POST" action="{{ route('admin.dtr.clear-employee', $card['id']) }}" class="mt-2" onsubmit="return confirm('Clear DTR records for {{ $card['name'] }} in the selected period?');">
-                    @csrf
-                    <input type="hidden" name="month" value="{{ $selectedMonth }}">
-                    <input type="hidden" name="year" value="{{ $selectedYear }}">
-                    <button type="submit" class="block w-full rounded-md border border-red-300 px-3 py-2 text-center text-sm font-semibold text-red-700 transition hover:bg-red-50">Clear DTR</button>
-                </form>
+                {{-- Clear DTR button removed to prevent accidental data loss --}}
             </article>
         @empty
             <div class="col-span-full rounded-xl border border-slate-200 bg-white p-8 text-center">
@@ -399,6 +410,47 @@
                     loadingOverlay.classList.add('flex');
                 }
             });
+        });
+
+        // Row actions dropdown (ellipsis)
+        document.querySelectorAll('.row-actions-toggle').forEach(button => {
+            button.addEventListener('click', (e) => {
+                const wrapper = button.closest('.relative');
+                const menu = wrapper ? wrapper.querySelector('.row-actions-menu') : null;
+                if (!menu) return;
+
+                const isHidden = menu.classList.contains('hidden');
+                // Close other menus first
+                document.querySelectorAll('.row-actions-menu').forEach(m => m.classList.add('hidden'));
+
+                if (isHidden) {
+                    menu.classList.remove('hidden');
+                    button.setAttribute('aria-expanded', 'true');
+                } else {
+                    menu.classList.add('hidden');
+                    button.setAttribute('aria-expanded', 'false');
+                }
+
+                e.stopPropagation();
+            });
+        });
+
+        // Prevent clicks inside menu from closing it
+        document.querySelectorAll('.row-actions-menu').forEach(menu => {
+            menu.addEventListener('click', e => e.stopPropagation());
+        });
+
+        // Close menus when clicking outside or pressing Escape
+        document.addEventListener('click', () => {
+            document.querySelectorAll('.row-actions-menu').forEach(m => m.classList.add('hidden'));
+            document.querySelectorAll('.row-actions-toggle').forEach(b => b.setAttribute('aria-expanded', 'false'));
+        });
+
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') {
+                document.querySelectorAll('.row-actions-menu').forEach(m => m.classList.add('hidden'));
+                document.querySelectorAll('.row-actions-toggle').forEach(b => b.setAttribute('aria-expanded', 'false'));
+            }
         });
     </script>
 @endpush

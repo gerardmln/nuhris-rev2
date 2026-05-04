@@ -10,9 +10,9 @@ class Kernel extends ConsoleKernel
 {
     protected function schedule(Schedule $schedule): void
     {
-        // Reset annual leave balances every day at 1:00 AM
-        // This checks all employees and resets balances for those with hiring anniversaries
-        $schedule->command(ResetAnnualLeaveBalances::class)->dailyAt('01:00');
+        // Automatic leave balance reset is disabled.
+        // Leave balances are now managed manually via the Admin Leave Management interface.
+        // Use the "Reset All Used Leave" button to manually reset used leave balances.
     }
 
     protected function commands(): void
