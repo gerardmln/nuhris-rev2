@@ -137,21 +137,55 @@ class LeaveBalanceService
     {
         $totalCredits = (float) $baseAmount;
 
-        // Only accrue if employee is regular with 1+ year service
-        if (!$this->isRegularWithYearService($employee)) {
+        // Only accrue if employee meets the initial regular threshold
+        if (! $this->isRegularWithYearService($employee)) {
             return $totalCredits;
         }
 
-        // Calculate how many complete years of service
+        $increment = self::YEARLY_INCREMENT[$leaveType] ?? 0;
+        $maxCredits = self::MAX_CREDITS[$leaveType] ?? PHP_INT_MAX;
+
+        $employmentType = strtoupper((string) $employee->employment_type);
+
+        // ASP employees: first increment at 6 months, then yearly on anniversary
+        if (str_contains($employmentType, 'ASP') || str_contains($employmentType, 'ADMIN SUPPORT')) {
+            if (! $employee->hire_date) {
+                return $totalCredits;
+            }
+
+            $hireDate = Carbon::parse($employee->hire_date);
+            $months = $hireDate->diffInMonths(now(), false);
+
+            $increments = 0;
+
+            if ($months >= 6) {
+                // initial 6-month increment
+                $increments += 1;
+            }
+
+            // Add yearly increments for each complete year of service
+            if ($months >= 12) {
+                $increments += (int) floor($months / 12);
+            }
+
+            for ($i = 0; $i < $increments; $i++) {
+                if ($totalCredits + $increment <= $maxCredits) {
+                    $totalCredits += $increment;
+                } else {
+                    $totalCredits = $maxCredits;
+                    break;
+                }
+            }
+
+            return $totalCredits;
+        }
+
+        // Faculty and other regular employees: accrue per complete year
         $yearsOfService = $this->getYearsOfService($employee);
 
-        // For each complete year beyond the first, add increment
         if ($yearsOfService >= 1) {
-            $increment = self::YEARLY_INCREMENT[$leaveType] ?? 0;
-            $maxCredits = self::MAX_CREDITS[$leaveType] ?? PHP_INT_MAX;
+            $completeYears = (int) floor($yearsOfService);
 
-            $completeYears = floor($yearsOfService);
-            
             for ($i = 0; $i < $completeYears; $i++) {
                 if ($totalCredits + $increment <= $maxCredits) {
                     $totalCredits += $increment;
@@ -161,6 +195,8 @@ class LeaveBalanceService
                 }
             }
         }
+
+        return $totalCredits;
 
         return $totalCredits;
     }

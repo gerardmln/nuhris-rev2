@@ -351,17 +351,12 @@ class PortalController extends Controller
         $currentSchedule = $employee ? $scheduleService->currentSubmission($employee) : null;
         $canEditSchedule = ! ($currentSchedule && in_array($currentSchedule->status, [EmployeeScheduleSubmission::STATUS_PENDING, EmployeeScheduleSubmission::STATUS_APPROVED], true));
 
-        $absenceStart = $employee?->hire_date
-            ? \Carbon\Carbon::parse($employee->hire_date)
-            : ($records->last()?->record_date ?? $selectedDate->copy()->startOfMonth());
-        $absenceStart = $absenceStart->copy()->startOfDay()->max($systemStart);
-
         $totals = [
             'tardiness' => $records->sum('tardiness_minutes'),
             'undertime' => $records->sum('undertime_minutes'),
             'overtime' => $records->sum('overtime_minutes'),
             'absences' => $employee
-                ? $scheduleService->countDtrAbsences($employee, $absenceStart->copy()->startOfDay(), now()->startOfDay())
+                ? $scheduleService->countDtrAbsences($employee, $periodStart->copy()->startOfDay(), $periodEnd->copy()->startOfDay())
                 : 0,
             'workload_credits' => $records->filter(fn ($record) => $record->status === 'present' && $record->schedule_status === 'validated')->count(),
         ];
