@@ -128,7 +128,7 @@
                         </form>
                     @endif
                         @if ($submission)
-                            <a href="{{ route('admin.schedules.edit', $submission) }}" class="rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700">
+                            <a href="{{ route('admin.schedules.edit', $submission) }}" class="inline-flex items-center justify-center rounded-md bg-[#00386f] px-4 py-2 text-sm font-semibold text-white shadow-sm ring-1 ring-inset ring-[#00386f] hover:bg-[#002f5d]">
                                 Edit Schedule
                             </a>
                             <form method="POST" action="{{ route('admin.schedules.clear', $submission) }}" onsubmit="return confirm('Clear this schedule? The employee will need to resubmit.');" class="inline">

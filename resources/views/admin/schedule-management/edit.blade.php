@@ -86,7 +86,7 @@
 
         <div class="flex items-center justify-between rounded-xl border border-slate-300 bg-slate-50 p-4">
             <p class="text-sm text-slate-600">Changes will be saved and the employee will be notified.</p>
-            <button type="submit" class="rounded-md bg-blue-600 px-6 py-2 text-sm font-semibold text-white hover:bg-blue-700">
+            <button type="submit" class="inline-flex items-center justify-center rounded-md bg-[#00386f] px-6 py-2 text-sm font-semibold text-white shadow-md ring-1 ring-inset ring-[#00386f] hover:bg-[#002f5d]">
                 Save & Notify Employee
             </button>
         </div>
