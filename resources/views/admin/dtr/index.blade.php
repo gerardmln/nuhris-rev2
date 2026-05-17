@@ -91,6 +91,13 @@
                                 <option value="{{ $period['month'] }}-{{ $period['year'] }}" {{ $period['selected'] ? 'selected' : '' }}>{{ $period['label'] }}</option>
                             @endforeach
                         </select>
+                        <select name="record_status" onchange="this.form.submit()" class="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-blue-400 focus:outline-none">
+                            <option value="all" @selected(($recordStatus ?? 'all') === 'all')>All Statuses</option>
+                            <option value="present" @selected(($recordStatus ?? '') === 'present')>Present</option>
+                            <option value="not_present" @selected(($recordStatus ?? '') === 'not_present')>Not Present</option>
+                            <option value="non_working_day" @selected(($recordStatus ?? '') === 'non_working_day')>Non-working day</option>
+                            <option value="weekend" @selected(($recordStatus ?? '') === 'weekend')>Weekend</option>
+                        </select>
                         <input type="hidden" name="month" value="{{ $selectedMonth }}">
                         <input type="hidden" name="year" value="{{ $selectedYear }}">
                     </form>
@@ -205,6 +212,13 @@
                         <option value="all">All Employee Types</option>
                         <option value="regular" @selected(request('employee_class') === 'regular')>Regular Employees</option>
                         <option value="irregular" @selected(request('employee_class') === 'irregular')>Non-Regular Employee</option>
+                    </select>
+                    <select name="record_status" onchange="this.form.submit()" class="rounded-md border border-slate-300 bg-white px-4 py-2 text-sm focus:border-blue-400 focus:outline-none lg:min-w-[14rem]">
+                        <option value="all" @selected(($recordStatus ?? 'all') === 'all')>All Statuses</option>
+                        <option value="present" @selected(($recordStatus ?? '') === 'present')>Present</option>
+                        <option value="not_present" @selected(($recordStatus ?? '') === 'not_present')>Not Present</option>
+                        <option value="non_working_day" @selected(($recordStatus ?? '') === 'non_working_day')>Non-working day</option>
+                        <option value="weekend" @selected(($recordStatus ?? '') === 'weekend')>Weekend</option>
                     </select>
                     <input type="hidden" name="month" value="{{ $selectedMonth }}">
                     <input type="hidden" name="year" value="{{ $selectedYear }}">

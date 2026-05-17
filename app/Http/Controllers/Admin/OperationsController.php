@@ -47,10 +47,42 @@ class OperationsController extends Controller
     public function credentials(Request $request): View
     {
         $statusFilter = $request->string('status')->toString() ?: 'pending';
+        $search = $request->string('search')->toString();
+        $credentialType = $request->string('credential_type')->toString() ?: 'all';
+        $departmentId = $request->string('department_id')->toString() ?: 'all';
+        $expirationStatus = $request->string('expiration_status')->toString() ?: 'all';
 
         $query = EmployeeCredential::query()
             ->with(['employee.department', 'reviewer'])
             ->latest('updated_at');
+
+        if ($search !== '') {
+            $query->where(function ($nested) use ($search): void {
+                $nested->where('title', 'like', '%'.$search.'%')
+                    ->orWhere('description', 'like', '%'.$search.'%')
+                    ->orWhereHas('employee', function ($employeeQuery) use ($search): void {
+                        $employeeQuery->where('first_name', 'like', '%'.$search.'%')
+                            ->orWhere('last_name', 'like', '%'.$search.'%')
+                            ->orWhere('email', 'like', '%'.$search.'%')
+                            ->orWhere('employee_id', 'like', '%'.$search.'%');
+                    });
+            });
+        }
+
+        if ($credentialType !== 'all') {
+            $query->where('credential_type', $credentialType);
+        }
+
+        if ($departmentId !== 'all') {
+            if ($departmentId === 'asp') {
+                $query->whereHas('employee', function ($employeeQuery): void {
+                    $employeeQuery->where('employment_type', 'Admin Support Personnel')
+                        ->orWhereHas('department', fn ($departmentQuery) => $departmentQuery->where('name', 'ASP'));
+                });
+            } else {
+                $query->whereHas('employee', fn ($employeeQuery) => $employeeQuery->where('department_id', $departmentId));
+            }
+        }
 
         if ($statusFilter === 'expiring') {
             $query->where('status', 'verified');
@@ -71,6 +103,7 @@ class OperationsController extends Controller
                 'expires_at' => $credential->effectiveExpiresAt()?->format('M d, Y'),
                 'submitted_at' => $credential->created_at?->format('M d, Y h:i A'),
                 'status' => $credential->status,
+                'is_expired' => $credential->isExpired(),
                 'is_expiring_soon' => $credential->status === 'verified' && $credential->isExpiringSoon(),
                 'has_file' => !empty($credential->file_path),
                 'original_filename' => $credential->original_filename,
@@ -86,6 +119,14 @@ class OperationsController extends Controller
                 ->values();
         }
 
+        if ($expirationStatus === 'expiring') {
+            $credentials = $credentials->filter(fn (array $credential) => ! empty($credential['is_expiring_soon']))->values();
+        } elseif ($expirationStatus === 'expired') {
+            $credentials = $credentials->filter(fn (array $credential) => ! empty($credential['is_expired']))->values();
+        } elseif ($expirationStatus === 'valid') {
+            $credentials = $credentials->filter(fn (array $credential) => ! $credential['is_expired'] && ! $credential['is_expiring_soon'])->values();
+        }
+
         $counts = [
             'pending' => EmployeeCredential::query()->where('status', 'pending')->count(),
             'verified' => EmployeeCredential::query()->where('status', 'verified')->count(),
@@ -97,6 +138,13 @@ class OperationsController extends Controller
             'credentials' => $credentials,
             'counts' => $counts,
             'statusFilter' => $statusFilter,
+            'departments' => Department::query()->facultySchools()->orderBy('name')->get(),
+            'filters' => [
+                'search' => $search,
+                'credential_type' => $credentialType,
+                'department_id' => $departmentId,
+                'expiration_status' => $expirationStatus,
+            ],
         ]);
     }
 
@@ -182,6 +230,7 @@ class OperationsController extends Controller
         $employeeId = $request->integer('employee_id');
         $month = $request->integer('month');
         $year = $request->integer('year');
+        $recordStatus = $request->string('record_status')->toString() ?: 'all';
 
         if ($month && $year) {
             $dateFrom = Carbon::createFromDate($year, $month, 1)->startOfMonth();
@@ -209,6 +258,13 @@ class OperationsController extends Controller
 
         if ($employee) {
             $records = $this->buildAttendanceRows($employee, $dateFrom);
+            if ($recordStatus !== 'all') {
+                $records = $records->filter(function (array $record) use ($recordStatus): bool {
+                    $normalizedStatus = strtolower(str_replace([' ', '-'], '_', (string) $record['status']));
+
+                    return $normalizedStatus === $recordStatus;
+                })->values();
+            }
             $summary = [
                 'present_days' => $records->where('status', 'Present')->count(),
                 'absent_days' => $records->where('status', 'Not Present')->count(),
@@ -292,6 +348,7 @@ class OperationsController extends Controller
             'periods' => $periods,
             'employeeCards' => $employeeCards,
             'scheduleSummary' => $employee ? $scheduleService->summarizeSubmission($scheduleService->approvedSubmissionForDate($employee, $dateFrom)) : null,
+            'recordStatus' => $recordStatus,
         ]);
     }
 
@@ -966,12 +1023,41 @@ class OperationsController extends Controller
         return [$dateFrom, $dateTo];
     }
 
-    public function wfhIndex(): View
+    public function wfhIndex(Request $request): View
     {
+        $search = $request->string('search')->toString();
+        $departmentId = $request->string('department_id')->toString() ?: 'all';
+        $statusFilter = $request->string('status')->toString() ?: 'all';
+        $dateFrom = $request->filled('date_from') ? Carbon::parse($request->string('date_from')->toString())->startOfDay() : null;
+        $dateTo = $request->filled('date_to') ? Carbon::parse($request->string('date_to')->toString())->endOfDay() : null;
+
         $submissions = WfhMonitoringSubmission::query()
             ->with(['employee.department', 'reviewer'])
             ->orderByDesc('wfh_date')
             ->orderByDesc('submitted_at')
+            ->when($search !== '', function ($query) use ($search): void {
+                $query->whereHas('employee', function ($employeeQuery) use ($search): void {
+                    $employeeQuery->where('first_name', 'like', '%'.$search.'%')
+                        ->orWhere('last_name', 'like', '%'.$search.'%')
+                        ->orWhere('email', 'like', '%'.$search.'%')
+                        ->orWhere('employee_id', 'like', '%'.$search.'%')
+                        ->orWhereHas('department', fn ($departmentQuery) => $departmentQuery->where('name', 'like', '%'.$search.'%'));
+                });
+            })
+            ->when($departmentId !== 'all', function ($query) use ($departmentId): void {
+                if ($departmentId === 'asp') {
+                    $query->whereHas('employee', function ($employeeQuery): void {
+                        $employeeQuery->where('employment_type', 'Admin Support Personnel')
+                            ->orWhereHas('department', fn ($departmentQuery) => $departmentQuery->where('name', 'ASP'));
+                    });
+
+                    return;
+                }
+
+                $query->whereHas('employee', fn ($employeeQuery) => $employeeQuery->where('department_id', $departmentId));
+            })
+            ->when($statusFilter !== 'all', fn ($query) => $query->where('status', $statusFilter))
+            ->when($dateFrom && $dateTo, fn ($query) => $query->whereBetween('wfh_date', [$dateFrom->toDateString(), $dateTo->toDateString()]))
             ->get();
 
         $mapped = $submissions->map(function (WfhMonitoringSubmission $submission): array {
@@ -999,11 +1085,19 @@ class OperationsController extends Controller
 
         return view('admin.wfh-monitoring.index', [
             'submissions' => $mapped,
+            'departments' => Department::query()->facultySchools()->orderBy('name')->get(),
             'stats' => [
                 'all' => $mapped->count(),
                 'pending' => $mapped->where('status', WfhMonitoringSubmission::STATUS_PENDING)->count(),
                 'approved' => $mapped->where('status', WfhMonitoringSubmission::STATUS_APPROVED)->count(),
                 'declined' => $mapped->where('status', WfhMonitoringSubmission::STATUS_DECLINED)->count(),
+            ],
+            'filters' => [
+                'search' => $search,
+                'department_id' => $departmentId,
+                'status' => $statusFilter,
+                'date_from' => $request->string('date_from')->toString(),
+                'date_to' => $request->string('date_to')->toString(),
             ],
         ]);
     }
@@ -1204,6 +1298,7 @@ class OperationsController extends Controller
         $search = $request->string('search')->toString();
         $departmentId = $request->string('department_id')->toString();
         $employeeClass = $request->string('employee_class')->toString() ?: 'all';
+        $leaveType = $request->string('leave_type')->toString() ?: 'all';
         $leaveMonitoringService = app(LeaveMonitoringService::class);
         $leaveBalanceService = app(LeaveBalanceService::class);
 
@@ -1324,6 +1419,10 @@ class OperationsController extends Controller
                 'employee_status_label' => $isRegularEmployee ? 'Full - Time' : 'Probationary',
                 'absences' => $absencesByEmployee->get($employee->id, 0),
             ];
+        })->when($leaveType !== 'all', function ($collection) use ($leaveType) {
+            return $collection->filter(function (array $card) use ($leaveType) {
+                return in_array($leaveType, $card['leave_types'], true);
+            })->values();
         });
 
         $totalUsed = (float) $leaveCards->sum('used');
@@ -1350,6 +1449,7 @@ class OperationsController extends Controller
                 'search' => $search,
                 'department_id' => $departmentId,
                 'employee_class' => $employeeClass,
+                'leave_type' => $leaveType,
             ],
             'monthOptions' => $monthOptions,
             'stats' => [

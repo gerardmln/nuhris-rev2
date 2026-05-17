@@ -18,6 +18,33 @@
         </form>
     </div>
 
+    <div class="mb-6 rounded-lg border border-slate-300 bg-white p-4 shadow-sm">
+        <form method="GET" action="{{ route('admin.credentials.index') }}" class="grid grid-cols-1 gap-3 md:grid-cols-8">
+            <input type="text" name="search" value="{{ $filters['search'] ?? '' }}" placeholder="Search employee, title, or description" class="rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-blue-400 focus:outline-none md:col-span-3">
+            <select name="credential_type" onchange="this.form.submit()" class="rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-blue-400 focus:outline-none">
+                <option value="all" @selected(($filters['credential_type'] ?? 'all') === 'all')>All Types</option>
+                <option value="resume" @selected(($filters['credential_type'] ?? '') === 'resume')>Resume</option>
+                <option value="prc" @selected(($filters['credential_type'] ?? '') === 'prc')>PRC License</option>
+                <option value="seminars" @selected(($filters['credential_type'] ?? '') === 'seminars')>Seminar / Training</option>
+                <option value="degrees" @selected(($filters['credential_type'] ?? '') === 'degrees')>Academic Degree</option>
+                <option value="ranking" @selected(($filters['credential_type'] ?? '') === 'ranking')>Ranking File</option>
+            </select>
+            <select name="department_id" onchange="this.form.submit()" class="rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-blue-400 focus:outline-none">
+                <option value="all" @selected(($filters['department_id'] ?? 'all') === 'all')>All Departments</option>
+                <option value="asp" @selected(($filters['department_id'] ?? '') === 'asp')>Admin Support Personnel</option>
+                @foreach ($departments as $department)
+                    <option value="{{ $department->id }}" @selected(($filters['department_id'] ?? '') == $department->id)>{{ $department->name }}</option>
+                @endforeach
+            </select>
+            <select name="expiration_status" onchange="this.form.submit()" class="rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-blue-400 focus:outline-none">
+                <option value="all" @selected(($filters['expiration_status'] ?? 'all') === 'all')>All Expiration States</option>
+                <option value="valid" @selected(($filters['expiration_status'] ?? '') === 'valid')>Valid</option>
+                <option value="expiring" @selected(($filters['expiration_status'] ?? '') === 'expiring')>Expiring Soon</option>
+                <option value="expired" @selected(($filters['expiration_status'] ?? '') === 'expired')>Expired</option>
+            </select>
+        </form>
+    </div>
+
     <!-- Status Filter Tabs -->
     <div class="flex gap-4 mb-8 border-b border-slate-200">
         <a href="{{ route('admin.credentials.index', ['status' => 'pending']) }}" class="pb-4 px-4 {{ $statusFilter === 'pending' ? 'text-blue-600 border-b-2 border-blue-600 font-semibold' : 'text-slate-600 hover:text-slate-900' }}">

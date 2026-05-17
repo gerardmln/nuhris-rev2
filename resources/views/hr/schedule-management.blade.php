@@ -21,6 +21,27 @@
         </div>
     </div>
 
+    <div class="rounded-2xl border border-slate-300 bg-white p-4 shadow-sm">
+        <form method="GET" action="{{ route('schedules.index') }}" class="grid gap-2 md:grid-cols-4">
+            <input type="search" name="search" value="{{ $filters['search'] ?? '' }}" placeholder="Search employees" class="w-full rounded-md border border-slate-300 px-4 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100 md:col-span-2">
+            <select name="department_id" onchange="this.form.submit()" class="rounded-md border border-slate-300 bg-white px-4 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none">
+                <option value="all" @selected(($filters['department_id'] ?? 'all') === 'all')>All Departments</option>
+                <option value="asp" @selected(($filters['department_id'] ?? '') === 'asp')>Admin Support Personnel</option>
+                @foreach ($departments as $department)
+                    <option value="{{ $department->id }}" @selected(($filters['department_id'] ?? '') == $department->id)>{{ $department->name }}</option>
+                @endforeach
+            </select>
+            <select name="status" onchange="this.form.submit()" class="rounded-md border border-slate-300 bg-white px-4 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none">
+                <option value="all" @selected(($filters['status'] ?? 'all') === 'all')>All Statuses</option>
+                <option value="needs_upload" @selected(($filters['status'] ?? '') === 'needs_upload')>Needs Upload</option>
+                <option value="pending" @selected(($filters['status'] ?? '') === 'pending')>Pending</option>
+                <option value="approved" @selected(($filters['status'] ?? '') === 'approved')>Approved</option>
+                <option value="declined" @selected(($filters['status'] ?? '') === 'declined')>Declined</option>
+                <option value="reset" @selected(($filters['status'] ?? '') === 'reset')>Reset</option>
+            </select>
+        </form>
+    </div>
+
     <div class="grid grid-cols-1 gap-4 xl:grid-cols-2">
         @forelse ($employeeSchedules as $entry)
             @php

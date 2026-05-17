@@ -60,10 +60,42 @@ class OperationsController extends Controller
     public function credentials(Request $request): View
     {
         $statusFilter = $request->string('status')->toString() ?: 'pending';
+        $search = $request->string('search')->toString();
+        $credentialType = $request->string('credential_type')->toString() ?: 'all';
+        $departmentId = $request->string('department_id')->toString() ?: 'all';
+        $expirationStatus = $request->string('expiration_status')->toString() ?: 'all';
 
         $query = EmployeeCredential::query()
             ->with(['employee.department', 'reviewer'])
             ->latest('updated_at');
+
+        if ($search !== '') {
+            $query->where(function ($nested) use ($search): void {
+                $nested->where('title', 'like', '%'.$search.'%')
+                    ->orWhere('description', 'like', '%'.$search.'%')
+                    ->orWhereHas('employee', function ($employeeQuery) use ($search): void {
+                        $employeeQuery->where('first_name', 'like', '%'.$search.'%')
+                            ->orWhere('last_name', 'like', '%'.$search.'%')
+                            ->orWhere('email', 'like', '%'.$search.'%')
+                            ->orWhere('employee_id', 'like', '%'.$search.'%');
+                    });
+            });
+        }
+
+        if ($credentialType !== 'all') {
+            $query->where('credential_type', $credentialType);
+        }
+
+        if ($departmentId !== 'all') {
+            if ($departmentId === 'asp') {
+                $query->whereHas('employee', function ($employeeQuery): void {
+                    $employeeQuery->where('employment_type', 'Admin Support Personnel')
+                        ->orWhereHas('department', fn ($departmentQuery) => $departmentQuery->where('name', 'ASP'));
+                });
+            } else {
+                $query->whereHas('employee', fn ($employeeQuery) => $employeeQuery->where('department_id', $departmentId));
+            }
+        }
 
         if ($statusFilter === 'expiring') {
             $query->where('status', 'verified');
@@ -83,6 +115,7 @@ class OperationsController extends Controller
                 'expires_at' => $credential->effectiveExpiresAt()?->format('M d, Y'),
                 'submitted_at' => $credential->created_at?->format('M d, Y h:i A'),
                 'status' => $credential->status,
+                'is_expired' => $credential->isExpired(),
                 'is_expiring_soon' => $credential->status === 'verified' && $credential->isExpiringSoon(),
                 'has_file' => ! empty($credential->file_path),
                 'original_filename' => $credential->original_filename,
@@ -96,6 +129,14 @@ class OperationsController extends Controller
             $credentials = $credentials
                 ->filter(fn (array $credential) => ! empty($credential['is_expiring_soon']))
                 ->values();
+        }
+
+        if ($expirationStatus === 'expiring') {
+            $credentials = $credentials->filter(fn (array $credential) => ! empty($credential['is_expiring_soon']))->values();
+        } elseif ($expirationStatus === 'expired') {
+            $credentials = $credentials->filter(fn (array $credential) => ! empty($credential['is_expired']))->values();
+        } elseif ($expirationStatus === 'valid') {
+            $credentials = $credentials->filter(fn (array $credential) => ! $credential['is_expired'] && ! $credential['is_expiring_soon'])->values();
         }
 
         $counts = [
@@ -121,6 +162,12 @@ class OperationsController extends Controller
                 'verified' => $counts['verified'],
                 'rejected' => $counts['rejected'],
                 'expiring_soon' => $expiringSoon,
+            ],
+            'filters' => [
+                'search' => $search,
+                'credential_type' => $credentialType,
+                'department_id' => $departmentId,
+                'expiration_status' => $expirationStatus,
             ],
         ]);
     }
@@ -260,6 +307,7 @@ class OperationsController extends Controller
         $search = $request->string('search')->trim()->toString();
         $employeeClass = $request->string('employee_class')->toString() ?: 'all';
         $departmentId = $request->string('department_id')->toString();
+        $attendanceStatus = $request->string('attendance_status')->toString() ?: 'all';
         $selectedDate = Carbon::createFromDate($year, $month, 1);
 
         $query = Employee::query()
@@ -322,6 +370,16 @@ class OperationsController extends Controller
                 'has_data' => $stats['has_data'],
                 'schedule_summary' => $scheduleService->summarizeSubmission($scheduleService->currentSubmission($employee)),
             ];
+        })->when($attendanceStatus !== 'all', function ($collection) use ($attendanceStatus) {
+            return $collection->filter(function (array $card) use ($attendanceStatus) {
+                return match ($attendanceStatus) {
+                    'with_data' => $card['has_data'],
+                    'no_data' => ! $card['has_data'],
+                    'with_absences' => (int) $card['absences'] > 0,
+                    'no_absences' => (int) $card['absences'] === 0 && $card['has_data'],
+                    default => true,
+                };
+            })->values();
         });
 
         // Generate period options (last 12 months)
@@ -350,6 +408,7 @@ class OperationsController extends Controller
                 'department_id' => $departmentId,
                 'employee_class' => $employeeClass,
                 'search' => $search,
+                'attendance_status' => $attendanceStatus,
             ],
         ]);
     }

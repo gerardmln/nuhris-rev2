@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Models\Department;
 use App\Models\Employee;
 use App\Models\EmployeeScheduleSubmission;
 use App\Services\EmployeeScheduleService;
@@ -18,7 +19,10 @@ class ScheduleManagementController extends Controller
 {
     public function index(EmployeeScheduleService $scheduleService): View
     {
-        $search = request()->string('search')->trim()->toString();
+        $request = request();
+        $search = $request->string('search')->trim()->toString();
+        $departmentId = $request->string('department_id')->toString();
+        $statusFilter = $request->string('status')->toString() ?: 'all';
 
         $employees = Employee::query()
             ->with('department')
@@ -31,6 +35,18 @@ class ScheduleManagementController extends Controller
                             $departmentQuery->where('name', 'ilike', '%'.$search.'%');
                         });
                 });
+            })
+            ->when($departmentId !== '' && $departmentId !== 'all', function ($query) use ($departmentId): void {
+                if ($departmentId === 'asp') {
+                    $query->where(function ($nested): void {
+                        $nested->where('employment_type', 'Admin Support Personnel')
+                            ->orWhereHas('department', fn ($department) => $department->where('name', 'ASP'));
+                    });
+
+                    return;
+                }
+
+                $query->where('department_id', $departmentId);
             })
             ->orderBy('last_name')
             ->orderBy('first_name')
@@ -62,6 +78,14 @@ class ScheduleManagementController extends Controller
                 'status' => $latestSubmission->status,
                 'schedule_summary' => $scheduleService->summarizeSubmission($latestSubmission),
             ];
+        })->when($statusFilter !== 'all', function ($collection) use ($statusFilter) {
+            return $collection->filter(function (array $entry) use ($statusFilter) {
+                if ($statusFilter === 'needs_upload') {
+                    return $entry['status'] === 'needs_upload';
+                }
+
+                return $entry['status'] === $statusFilter;
+            })->values();
         });
 
         $counts = [
@@ -76,6 +100,12 @@ class ScheduleManagementController extends Controller
             'employeeSchedules' => $employeeSchedules,
             'counts' => $counts,
             'search' => $search,
+            'departments' => Department::query()->orderBy('name')->get(),
+            'filters' => [
+                'department_id' => $departmentId,
+                'status' => $statusFilter,
+                'search' => $search,
+            ],
         ]);
     }
 

@@ -74,6 +74,9 @@ class EmployeeController extends Controller
     {
         $search = $request->string('search')->toString();
         $departmentId = $request->string('department_id')->toString();
+        $employeeClass = $request->string('employee_class')->toString() ?: 'all';
+        $status = $request->string('status')->toString() ?: 'all';
+        $position = $request->string('position')->toString();
 
         $employeesQuery = Employee::query()
             ->with(['department'])
@@ -97,6 +100,20 @@ class EmployeeController extends Controller
             $employeesQuery->where('department_id', $departmentId);
         }
 
+        if ($status !== 'all') {
+            $employeesQuery->where('status', $status);
+        }
+
+        if (filled($position)) {
+            $employeesQuery->where('position', 'like', '%'.$position.'%');
+        }
+
+        if ($employeeClass === 'regular') {
+            $employeesQuery->where('employment_type', '!=', 'Admin Support Personnel');
+        } elseif ($employeeClass === 'irregular') {
+            $employeesQuery->where('employment_type', 'Admin Support Personnel');
+        }
+
         $employees = $employeesQuery->paginate(15)->withQueryString();
 
         return view('admin.employees.index', [
@@ -105,6 +122,9 @@ class EmployeeController extends Controller
             'filters' => [
                 'search' => $search,
                 'department_id' => $departmentId,
+                'employee_class' => $employeeClass,
+                'status' => $status,
+                'position' => $position,
             ],
         ]);
     }

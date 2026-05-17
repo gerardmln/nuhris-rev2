@@ -8,6 +8,27 @@
         <p class="max-w-3xl text-sm text-slate-600">Review submitted Work Output Monitoring Sheets. Approving a sheet will create or update the employee's attendance record for the submitted WFH date.</p>
     </div>
 
+    <div class="rounded-2xl border border-slate-300 bg-white p-4 shadow-sm">
+        <form method="GET" action="{{ route('admin.wfh-monitoring.index') }}" class="grid grid-cols-1 gap-3 md:grid-cols-8">
+            <input type="text" name="search" value="{{ $filters['search'] ?? '' }}" placeholder="Search employee, email, or department" class="rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-blue-400 focus:outline-none md:col-span-3">
+            <select name="department_id" onchange="this.form.submit()" class="rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-blue-400 focus:outline-none">
+                <option value="all" @selected(($filters['department_id'] ?? 'all') === 'all')>All Departments</option>
+                <option value="asp" @selected(($filters['department_id'] ?? '') === 'asp')>Admin Support Personnel</option>
+                @foreach ($departments as $department)
+                    <option value="{{ $department->id }}" @selected(($filters['department_id'] ?? '') == $department->id)>{{ $department->name }}</option>
+                @endforeach
+            </select>
+            <select name="status" onchange="this.form.submit()" class="rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-blue-400 focus:outline-none">
+                <option value="all" @selected(($filters['status'] ?? 'all') === 'all')>All Statuses</option>
+                <option value="pending" @selected(($filters['status'] ?? '') === 'pending')>Pending</option>
+                <option value="approved" @selected(($filters['status'] ?? '') === 'approved')>Approved</option>
+                <option value="declined" @selected(($filters['status'] ?? '') === 'declined')>Declined</option>
+            </select>
+            <input type="date" name="date_from" value="{{ $filters['date_from'] ?? '' }}" class="rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-blue-400 focus:outline-none">
+            <input type="date" name="date_to" value="{{ $filters['date_to'] ?? '' }}" class="rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-blue-400 focus:outline-none">
+        </form>
+    </div>
+
     <div class="grid gap-4 md:grid-cols-4">
         <div class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
             <p class="text-xs font-semibold uppercase tracking-wide text-slate-500">Total</p>

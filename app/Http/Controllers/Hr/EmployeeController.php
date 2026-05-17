@@ -27,6 +27,8 @@ class EmployeeController extends Controller
         $search = $request->string('search')->toString();
         $departmentId = $request->string('department_id')->toString();
         $employeeClass = $request->string('employee_class')->toString() ?: 'all';
+        $status = $request->string('status')->toString() ?: 'all';
+        $position = $request->string('position')->toString();
         $leaveMonitoringService = app(LeaveMonitoringService::class);
 
         $employeesQuery = Employee::query()
@@ -54,6 +56,14 @@ class EmployeeController extends Controller
             $employeesQuery->where('department_id', $departmentId);
         }
 
+        if ($status !== 'all') {
+            $employeesQuery->where('status', $status);
+        }
+
+        if (filled($position)) {
+            $employeesQuery->where('position', 'like', '%'.$position.'%');
+        }
+
         $leaveMonitoringService->applyEmployeeClassFilter($employeesQuery, $employeeClass);
 
         $employees = $employeesQuery
@@ -67,6 +77,8 @@ class EmployeeController extends Controller
                 'search' => $search,
                 'department_id' => $departmentId,
                 'employee_class' => $employeeClass,
+                'status' => $status,
+                'position' => $position,
             ],
         ], $this->formOptions()));
     }

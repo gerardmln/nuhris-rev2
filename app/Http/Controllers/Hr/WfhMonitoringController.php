@@ -5,12 +5,14 @@ namespace App\Http\Controllers\Hr;
 use App\Http\Controllers\Controller;
 use App\Models\Announcement;
 use App\Models\AnnouncementNotification;
+use App\Models\Department;
 use App\Models\AttendanceRecord;
 use App\Models\Employee;
 use App\Models\User;
 use App\Models\WfhMonitoringSubmission;
 use App\Services\EmployeeScheduleService;
 use App\Services\SupabaseStorageService;
+use Carbon\Carbon;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -20,10 +22,39 @@ class WfhMonitoringController extends Controller
 {
     public function index(Request $request): View
     {
+        $search = $request->string('search')->toString();
+        $departmentId = $request->string('department_id')->toString() ?: 'all';
+        $statusFilter = $request->string('status')->toString() ?: 'all';
+        $dateFrom = $request->filled('date_from') ? Carbon::parse($request->string('date_from')->toString())->startOfDay() : null;
+        $dateTo = $request->filled('date_to') ? Carbon::parse($request->string('date_to')->toString())->endOfDay() : null;
+
         $submissions = WfhMonitoringSubmission::query()
             ->with(['employee.department', 'reviewer'])
             ->orderByDesc('wfh_date')
             ->orderByDesc('submitted_at')
+            ->when($search !== '', function ($query) use ($search): void {
+                $query->whereHas('employee', function ($employeeQuery) use ($search): void {
+                    $employeeQuery->where('first_name', 'like', '%'.$search.'%')
+                        ->orWhere('last_name', 'like', '%'.$search.'%')
+                        ->orWhere('email', 'like', '%'.$search.'%')
+                        ->orWhere('employee_id', 'like', '%'.$search.'%')
+                        ->orWhereHas('department', fn ($departmentQuery) => $departmentQuery->where('name', 'like', '%'.$search.'%'));
+                });
+            })
+            ->when($departmentId !== 'all', function ($query) use ($departmentId): void {
+                if ($departmentId === 'asp') {
+                    $query->whereHas('employee', function ($employeeQuery): void {
+                        $employeeQuery->where('employment_type', 'Admin Support Personnel')
+                            ->orWhereHas('department', fn ($departmentQuery) => $departmentQuery->where('name', 'ASP'));
+                    });
+
+                    return;
+                }
+
+                $query->whereHas('employee', fn ($employeeQuery) => $employeeQuery->where('department_id', $departmentId));
+            })
+            ->when($statusFilter !== 'all', fn ($query) => $query->where('status', $statusFilter))
+            ->when($dateFrom && $dateTo, fn ($query) => $query->whereBetween('wfh_date', [$dateFrom->toDateString(), $dateTo->toDateString()]))
             ->get();
 
         $mapped = $submissions->map(function (WfhMonitoringSubmission $submission): array {
@@ -51,11 +82,19 @@ class WfhMonitoringController extends Controller
 
         return view('hr.wfh-monitoring', [
             'submissions' => $mapped,
+            'departments' => Department::query()->facultySchools()->orderBy('name')->get(),
             'stats' => [
                 'all' => $mapped->count(),
                 'pending' => $mapped->where('status', WfhMonitoringSubmission::STATUS_PENDING)->count(),
                 'approved' => $mapped->where('status', WfhMonitoringSubmission::STATUS_APPROVED)->count(),
                 'declined' => $mapped->where('status', WfhMonitoringSubmission::STATUS_DECLINED)->count(),
+            ],
+            'filters' => [
+                'search' => $search,
+                'department_id' => $departmentId,
+                'status' => $statusFilter,
+                'date_from' => $request->string('date_from')->toString(),
+                'date_to' => $request->string('date_to')->toString(),
             ],
         ]);
     }

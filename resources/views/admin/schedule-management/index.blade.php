@@ -16,22 +16,23 @@
                    <p class="mt-1 text-sm text-slate-600">Review submitted weekly schedules, edit them, or clear them when needed.</p>
             </div>
             <div class="flex flex-col gap-3 sm:flex-row">
-                <form method="GET" action="{{ route('admin.schedules.index') }}" class="flex gap-2">
-                    <input
-                        type="search"
-                        name="search"
-                        value="{{ $search }}"
-                        placeholder="Search employees"
-                        class="w-full rounded-md border border-slate-300 px-4 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100 sm:w-72"
-                    >
-                    @if ($search !== '')
-                        <a href="{{ route('admin.schedules.index') }}" class="rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50">
-                            Clear
-                        </a>
-                    @endif
-                    <button type="submit" class="rounded-md bg-slate-800 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-900">
-                        Search
-                    </button>
+                <form method="GET" action="{{ route('admin.schedules.index') }}" class="grid gap-2 sm:grid-cols-4">
+                    <input type="search" name="search" value="{{ $filters['search'] ?? '' }}" placeholder="Search employees" class="w-full rounded-md border border-slate-300 px-4 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100 sm:col-span-2 sm:w-72">
+                    <select name="department_id" onchange="this.form.submit()" class="rounded-md border border-slate-300 bg-white px-4 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none">
+                        <option value="all" @selected(($filters['department_id'] ?? 'all') === 'all')>All Departments</option>
+                        <option value="asp" @selected(($filters['department_id'] ?? '') === 'asp')>Admin Support Personnel</option>
+                        @foreach ($departments as $department)
+                            <option value="{{ $department->id }}" @selected(($filters['department_id'] ?? '') == $department->id)>{{ $department->name }}</option>
+                        @endforeach
+                    </select>
+                    <select name="status" onchange="this.form.submit()" class="rounded-md border border-slate-300 bg-white px-4 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none">
+                        <option value="all" @selected(($filters['status'] ?? 'all') === 'all')>All Statuses</option>
+                        <option value="needs_upload" @selected(($filters['status'] ?? '') === 'needs_upload')>Needs Upload</option>
+                        <option value="pending" @selected(($filters['status'] ?? '') === 'pending')>Pending</option>
+                        <option value="approved" @selected(($filters['status'] ?? '') === 'approved')>Approved</option>
+                        <option value="declined" @selected(($filters['status'] ?? '') === 'declined')>Declined</option>
+                        <option value="reset" @selected(($filters['status'] ?? '') === 'reset')>Reset</option>
+                    </select>
                 </form>
                 <form method="POST" action="{{ route('admin.schedules.reset-all') }}" onsubmit="return confirm('Clear all schedules? Employees will need to resubmit their weekly schedules.');">
                     @csrf

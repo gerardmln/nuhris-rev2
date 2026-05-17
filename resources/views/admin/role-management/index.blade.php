@@ -24,6 +24,30 @@
         </div>
     </div>
 
+    <div class="mb-6 rounded-lg border border-slate-300 bg-white p-4 shadow-sm">
+        <form method="GET" action="{{ route('admin.roles.index') }}" class="grid grid-cols-1 gap-3 md:grid-cols-8">
+            <input type="text" name="search" value="{{ $filters['search'] ?? '' }}" placeholder="Search by name or email" class="rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-blue-400 focus:outline-none md:col-span-3">
+            <select name="role" onchange="this.form.submit()" class="rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-blue-400 focus:outline-none">
+                <option value="all" @selected(($filters['role'] ?? 'all') === 'all')>All Roles</option>
+                @foreach($roles as $role)
+                    <option value="{{ $role['value'] }}" @selected((string) ($filters['role'] ?? '') === (string) $role['value'])>{{ $role['label'] }}</option>
+                @endforeach
+            </select>
+            <select name="status" onchange="this.form.submit()" class="rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-blue-400 focus:outline-none">
+                <option value="all" @selected(($filters['status'] ?? 'all') === 'all')>All Statuses</option>
+                <option value="active" @selected(($filters['status'] ?? '') === 'active')>Active</option>
+                <option value="inactive" @selected(($filters['status'] ?? '') === 'inactive')>Inactive</option>
+            </select>
+            <select name="department_id" onchange="this.form.submit()" class="rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-blue-400 focus:outline-none md:col-span-2">
+                <option value="all" @selected(($filters['department_id'] ?? 'all') === 'all')>All Departments</option>
+                <option value="asp" @selected(($filters['department_id'] ?? '') === 'asp')>Admin Support Personnel</option>
+                @foreach ($departments as $department)
+                    <option value="{{ $department->id }}" @selected(($filters['department_id'] ?? '') == $department->id)>{{ $department->name }}</option>
+                @endforeach
+            </select>
+        </form>
+    </div>
+
     <!-- Users List -->
     <div class="bg-white rounded-lg shadow overflow-hidden">
         <table class="w-full">

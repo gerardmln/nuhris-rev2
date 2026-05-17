@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Models\Department;
 use App\Models\Employee;
 use App\Models\User;
 use Illuminate\Http\RedirectResponse;
@@ -12,11 +13,34 @@ use Illuminate\View\View;
 
 class RoleManagementController extends Controller
 {
-    public function index(): View
+    public function index(Request $request): View
     {
+        $search = $request->string('search')->toString();
+        $roleFilter = $request->string('role')->toString() ?: 'all';
+        $statusFilter = $request->string('status')->toString() ?: 'all';
+        $departmentId = $request->string('department_id')->toString();
+
         $users = User::query()
             ->with('employeeProfile')
             ->orderBy('name')
+            ->when($search, function ($query, $searchTerm) {
+                $query->where(function ($nested) use ($searchTerm) {
+                    $nested->where('name', 'like', '%'.$searchTerm.'%')
+                        ->orWhere('email', 'like', '%'.$searchTerm.'%');
+                });
+            })
+            ->when($roleFilter !== 'all', fn ($query) => $query->where('user_type', $roleFilter))
+            ->when($statusFilter === 'active', fn ($query) => $query->whereNotNull('email_verified_at'))
+            ->when($statusFilter === 'inactive', fn ($query) => $query->whereNull('email_verified_at'))
+            ->when(filled($departmentId), function ($query) use ($departmentId) {
+                if ($departmentId === 'asp') {
+                    $query->whereHas('employeeProfile', fn ($employeeQuery) => $employeeQuery->where('employment_type', 'Admin Support Personnel'));
+
+                    return;
+                }
+
+                $query->whereHas('employeeProfile', fn ($employeeQuery) => $employeeQuery->where('department_id', $departmentId));
+            })
             ->get()
             ->map(function (User $user) {
                 return [
@@ -44,6 +68,13 @@ class RoleManagementController extends Controller
                 ['value' => User::TYPE_ADMIN, 'label' => 'Admin'],
                 ['value' => User::TYPE_HR, 'label' => 'HR'],
                 ['value' => User::TYPE_EMPLOYEE, 'label' => 'Employee'],
+            ],
+            'departments' => Department::query()->orderBy('name')->get(),
+            'filters' => [
+                'search' => $search,
+                'role' => $roleFilter,
+                'status' => $statusFilter,
+                'department_id' => $departmentId,
             ],
         ]);
     }
