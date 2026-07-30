@@ -197,7 +197,10 @@ class EmployeeController extends Controller
             return ['sent' => true, 'message' => null];
         } catch (\Throwable $exception) {
             Log::warning('Admin: Failed to send credentials email', ['employee_id' => $employee->id, 'error' => $exception->getMessage()]);
-            return ['sent' => false, 'message' => $exception->getMessage()];
+            return [
+                'sent' => false,
+                'message' => 'Email delivery failed because SMTP authentication is unavailable right now. Please share the credentials manually.',
+            ];
         }
     }
 

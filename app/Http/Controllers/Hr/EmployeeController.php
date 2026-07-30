@@ -255,7 +255,10 @@ class EmployeeController extends Controller
                 'error' => $exception->getMessage(),
             ]);
 
-            return ['sent' => false, 'message' => $exception->getMessage()];
+            return [
+                'sent' => false,
+                'message' => 'Email delivery failed because SMTP authentication is unavailable right now. Please share the credentials manually.',
+            ];
         }
     }
 
