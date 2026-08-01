@@ -23,7 +23,7 @@ class EmployeeController extends Controller
     public function create(): View
     {
         return view('admin.employees.create', array_merge([
-            'departments' => Department::query()->orderBy('name')->get(),
+            'departments' => Department::query()->facultySchools()->orderBy('name')->get(),
         ], $this->formOptions()));
     }
 
@@ -33,26 +33,12 @@ class EmployeeController extends Controller
         $payload = $this->applyDefaultDepartmentForNonTeachingRoles($payload);
         $payload['status'] = 'active';
 
-        if (empty($payload['employee_id'])) {
-            unset($payload['employee_id']);
-        }
-
-        $attempt = 0;
-        $employee = null;
-
-        while (true) {
-            try {
-                $employee = Employee::create($payload);
-                break;
-            } catch (\Illuminate\Database\UniqueConstraintViolationException $exception) {
-                $attempt++;
-
-                if ($attempt >= 3 || ! str_contains($exception->getMessage(), 'employees_employee_id_unique')) {
-                    throw $exception;
-                }
-
-                $payload['employee_id'] = Employee::generateEmployeeId();
-            }
+        try {
+            $employee = Employee::create($payload);
+        } catch (\Illuminate\Database\UniqueConstraintViolationException $exception) {
+            return back()
+                ->withInput()
+                ->with('error', 'Failed to create employee. The employee ID or email already exists.');
         }
 
         [$tempPassword] = $this->provisionEmployeeAccount($employee);

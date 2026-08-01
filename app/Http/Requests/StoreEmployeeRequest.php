@@ -48,10 +48,15 @@ class StoreEmployeeRequest extends FormRequest
             default => $allPositions,
         };
 
+        $isAdminEmployeeCreate = $this->route()?->getName() === 'admin.employees.store';
+
         return [
-            // Allow HR to provide an existing employee_id (for "Add Existing Employee").
-            // When empty/null, the model will auto-generate one on save.
-            'employee_id' => ['nullable', 'string', 'max:50', 'unique:employees,employee_id'],
+            'employee_id' => [
+                $isAdminEmployeeCreate ? 'required' : 'nullable',
+                'string',
+                'max:50',
+                'unique:employees,employee_id',
+            ],
             'first_name' => ['required', 'string', 'max:255'],
             'last_name' => ['required', 'string', 'max:255'],
             'email' => ['required', 'email', 'max:255', 'unique:employees,email'],

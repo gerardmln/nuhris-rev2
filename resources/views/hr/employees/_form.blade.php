@@ -1,5 +1,7 @@
 @php
     $isEdit = isset($employee);
+    $showEmployeeIdInput = $showEmployeeIdInput ?? false;
+    $submitLabel = $submitLabel ?? ($isEdit ? 'Update Employee' : 'Create Employee');
     $facultyPositions = $facultyPositions ?? [];
     $aspPositions = $aspPositions ?? [];
     $rawPhone = (string) old('phone', $employee->phone ?? '');
@@ -17,16 +19,19 @@
 @endphp
 
 <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
-    @if ($isEdit)
+    @if ($isEdit || $showEmployeeIdInput)
         <div>
             <label for="employee_id" class="mb-1 block text-sm font-semibold text-slate-700">Employee ID *</label>
-            <input id="employee_id" name="employee_id" type="text" value="{{ old('employee_id', $employee->employee_id ?? '') }}" class="w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-blue-400 focus:outline-none" required>
+            <input id="employee_id" name="employee_id" type="text" value="{{ old('employee_id', $employee->employee_id ?? '') }}" placeholder="e.g. 23-8035 or 238035" class="w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-blue-400 focus:outline-none" required>
+            @if ($showEmployeeIdInput && ! $isEdit)
+                <p class="mt-2 text-sm text-slate-500">Enter the existing Employee ID. Format: YY-XXXXX (e.g. 23-8035, 24-08052). The system accepts both with and without dash.</p>
+            @endif
             @error('employee_id')<p class="mt-1 text-xs text-red-600">{{ $message }}</p>@enderror
         </div>
     @else
         <div class="rounded-md border border-dashed border-slate-300 bg-slate-50 px-3 py-3 md:col-span-2">
             <p class="text-sm font-semibold text-slate-700">Employee ID</p>
-            <p class="text-sm text-slate-500">Automatically generated on save using the format <span class="font-medium text-slate-700">YYYY-001</span>.</p>
+            <p class="text-sm text-slate-500">HR can leave this blank to auto-generate an ID on save, or enter an existing employee ID to link a current record.</p>
         </div>
     @endif
 
@@ -68,6 +73,12 @@
         </div>
         <p class="mt-1 text-xs text-slate-500">Enter 10 digits only. Example: +63 998 765 4321</p>
         @error('phone')<p class="mt-1 text-xs text-red-600">{{ $message }}</p>@enderror
+    </div>
+
+    <div>
+        <label for="address" class="mb-1 block text-sm font-semibold text-slate-700">Address</label>
+        <input id="address" name="address" type="text" value="{{ old('address', $employee->address ?? '') }}" placeholder="Complete address" class="w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-blue-400 focus:outline-none">
+        @error('address')<p class="mt-1 text-xs text-red-600">{{ $message }}</p>@enderror
     </div>
 
     <div>
@@ -139,7 +150,7 @@
     <div class="mt-6 rounded-md border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-800">
         <p class="font-semibold">Login account will be auto-created</p>
         <p class="mt-1 text-blue-700">
-            After saving, NU HRIS will generate a temporary password for this employee and display it here so you can share it with them.
+            After saving, NU HRIS will generate a temporary password for this employee.
         </p>
     </div>
 @endunless
@@ -147,6 +158,6 @@
 <div class="mt-6 flex items-center justify-end gap-3">
     <a href="{{ $cancelRoute }}" class="rounded-md border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50">Cancel</a>
     <button type="submit" class="rounded-md bg-[#00386f] px-4 py-2 text-sm font-semibold text-white hover:bg-[#002f5d]">
-        {{ $isEdit ? 'Update Employee' : 'Create Employee' }}
+        {{ $submitLabel }}
     </button>
 </div>
