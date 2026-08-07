@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Models\AcademicCalendarEntry;
 use App\Models\Employee;
 use App\Models\AttendanceRecord;
 use App\Models\EmployeeScheduleDay;
@@ -95,6 +96,21 @@ class EmployeeScheduleService
      */
     public function evaluateDailyRecord(Employee $employee, Carbon $date, ?string $timeIn, ?string $timeOut): array
     {
+        $academicDayType = $this->academicCalendarDayType($date);
+
+        if ($academicDayType === 'non_working') {
+            return [
+                'schedule_status' => 'non_working_day',
+                'schedule_notes' => 'Academic calendar non-working date',
+                'scheduled_time_in' => null,
+                'scheduled_time_out' => null,
+                'tardiness_minutes' => 0,
+                'undertime_minutes' => 0,
+                'overtime_minutes' => 0,
+                'status' => 'present',
+            ];
+        }
+
         $approvedLeave = $this->approvedLeaveForDate($employee, $date);
 
         if ($approvedLeave) {
@@ -104,6 +120,19 @@ class EmployeeScheduleService
         $submission = $this->approvedSubmissionForDate($employee, $date);
 
         if (! $submission) {
+            if ($academicDayType === 'working') {
+                return [
+                    'schedule_status' => 'academic_working_day',
+                    'schedule_notes' => 'Academic calendar working date',
+                    'scheduled_time_in' => null,
+                    'scheduled_time_out' => null,
+                    'tardiness_minutes' => 0,
+                    'undertime_minutes' => 0,
+                    'overtime_minutes' => 0,
+                    'status' => ($timeIn || $timeOut) ? 'present' : 'absent',
+                ];
+            }
+
             return [
                 'schedule_status' => 'no_schedule',
                 'schedule_notes' => 'No schedule available',
@@ -119,6 +148,19 @@ class EmployeeScheduleService
         $day = $submission->days->firstWhere('day_index', (int) $date->dayOfWeekIso);
 
         if (! $day) {
+            if ($academicDayType === 'working') {
+                return [
+                    'schedule_status' => 'academic_working_day',
+                    'schedule_notes' => 'Academic calendar working date',
+                    'scheduled_time_in' => null,
+                    'scheduled_time_out' => null,
+                    'tardiness_minutes' => 0,
+                    'undertime_minutes' => 0,
+                    'overtime_minutes' => 0,
+                    'status' => ($timeIn || $timeOut) ? 'present' : 'absent',
+                ];
+            }
+
             return [
                 'schedule_status' => 'no_schedule',
                 'schedule_notes' => 'No schedule available',
@@ -132,6 +174,23 @@ class EmployeeScheduleService
         }
 
         if (! $day->has_work) {
+            if ($academicDayType === 'working') {
+                $scheduledIn = null;
+                $scheduledOut = null;
+                $actualIn = $this->parseTime($timeIn);
+
+                return [
+                    'schedule_status' => 'academic_working_day',
+                    'schedule_notes' => 'Academic calendar working date',
+                    'scheduled_time_in' => $scheduledIn,
+                    'scheduled_time_out' => $scheduledOut,
+                    'tardiness_minutes' => 0,
+                    'undertime_minutes' => 0,
+                    'overtime_minutes' => 0,
+                    'status' => $actualIn || $timeOut ? 'present' : 'absent',
+                ];
+            }
+
             return [
                 'schedule_status' => 'non_working_day',
                 'schedule_notes' => 'Non-working day',
@@ -272,6 +331,20 @@ class EmployeeScheduleService
             ->get()
             ->keyBy(fn (AttendanceRecord $record) => $record->record_date->toDateString());
 
+        $academicNonWorkingDates = AcademicCalendarEntry::query()
+            ->where('day_type', 'non_working')
+            ->whereBetween('event_date', [$periodStart->toDateString(), $periodEnd->toDateString()])
+            ->pluck('event_date')
+            ->mapWithKeys(fn ($date) => [(string) $date => true])
+            ->all();
+
+        $academicWorkingDates = AcademicCalendarEntry::query()
+            ->where('day_type', 'working')
+            ->whereBetween('event_date', [$periodStart->toDateString(), $periodEnd->toDateString()])
+            ->pluck('event_date')
+            ->mapWithKeys(fn ($date) => [(string) $date => true])
+            ->all();
+
         $submission ??= $this->approvedSubmissionForDate($employee, $periodStart);
         $absences = 0;
 
@@ -280,7 +353,15 @@ class EmployeeScheduleService
                 continue;
             }
 
-            if ($date->dayOfWeekIso === 7) {
+            $dateKey = $date->toDateString();
+            $isAcademicNonWorking = isset($academicNonWorkingDates[$dateKey]);
+            $isAcademicWorking = isset($academicWorkingDates[$dateKey]);
+
+            if ($isAcademicNonWorking) {
+                continue;
+            }
+
+            if ($date->dayOfWeekIso === 7 && ! $isAcademicWorking) {
                 continue;
             }
 
@@ -288,15 +369,13 @@ class EmployeeScheduleService
                 continue;
             }
 
-            if ($submission) {
+            if ($submission && ! $isAcademicWorking) {
                 $scheduleDay = $submission->days->firstWhere('day_index', $date->dayOfWeekIso);
 
                 if ($scheduleDay && ! $scheduleDay->has_work) {
                     continue;
                 }
             }
-
-            $dateKey = $date->toDateString();
 
             if (! $attendanceRecords->has($dateKey)) {
                 $absences++;
@@ -311,6 +390,23 @@ class EmployeeScheduleService
         }
 
         return $absences;
+    }
+
+    private function academicCalendarDayType(Carbon $date): ?string
+    {
+        $dayTypes = AcademicCalendarEntry::query()
+            ->whereDate('event_date', $date->toDateString())
+            ->pluck('day_type');
+
+        if ($dayTypes->contains('non_working')) {
+            return 'non_working';
+        }
+
+        if ($dayTypes->contains('working')) {
+            return 'working';
+        }
+
+        return null;
     }
 
     private function normalizeTimeInput(mixed $value): ?string

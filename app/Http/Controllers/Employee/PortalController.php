@@ -7,6 +7,7 @@ use App\Http\Requests\StoreEmployeeCredentialRequest;
 use App\Http\Requests\UpdateEmployeeAccountRequest;
 use App\Models\Announcement;
 use App\Models\AnnouncementNotification;
+use App\Models\AcademicCalendarEntry;
 use App\Models\Department;
 use App\Models\Employee;
 use App\Models\EmployeeCredential;
@@ -64,10 +65,62 @@ class PortalController extends Controller
         $expiringSoonCount = $expiringSoonCredentials->count();
         $compliantCount = $compliantCredentials->count();
 
-        $calendarEvents = $recentAlerts
-            ->map(fn (AnnouncementNotification $notification) => $notification->announcement?->title)
-            ->filter()
+        $academicCalendarEntries = AcademicCalendarEntry::query()
+            ->orderBy('event_date')
+            ->get();
+
+        $monthStart = now()->startOfMonth();
+        $monthEnd = now()->endOfMonth();
+
+        $monthEntries = $academicCalendarEntries
+            ->filter(fn (AcademicCalendarEntry $entry) => $entry->event_date->betweenIncluded($monthStart->copy()->startOfDay(), $monthEnd->copy()->endOfDay()))
             ->values();
+
+        $upcomingEntries = $academicCalendarEntries
+            ->filter(fn (AcademicCalendarEntry $entry) => $entry->event_date->gte(today()->startOfDay()))
+            ->sortBy('event_date')
+            ->take(5)
+            ->values();
+
+        $calendarEvents = $upcomingEntries
+            ->map(fn (AcademicCalendarEntry $entry) => sprintf('%s - %s (%s)', $entry->event_date->format('M d'), $entry->title, $entry->type_label))
+            ->values();
+
+        $academicCalendarPayload = $academicCalendarEntries
+            ->map(fn (AcademicCalendarEntry $entry) => [
+                'id' => $entry->id,
+                'title' => $entry->title,
+                'entry_type' => $entry->entry_type,
+                'day_type' => $entry->day_type,
+                'event_date' => $entry->event_date->toDateString(),
+                'description' => $entry->description,
+                'type_label' => $entry->type_label,
+                'badge_class' => $entry->badge_class,
+            ])
+            ->values();
+
+        $calendarCells = [];
+        $dayPointer = $monthStart->copy()->startOfWeek(Carbon::SUNDAY);
+        $gridEnd = $monthEnd->copy()->endOfWeek(Carbon::SATURDAY);
+
+        while ($dayPointer->lte($gridEnd)) {
+            if ($dayPointer->month !== $monthStart->month) {
+                $calendarCells[] = null;
+                $dayPointer->addDay();
+                continue;
+            }
+
+            $entriesForDay = $monthEntries->filter(fn (AcademicCalendarEntry $entry) => $entry->event_date->isSameDay($dayPointer))->values();
+
+            $calendarCells[] = [
+                'date' => $dayPointer->copy(),
+                'day' => (int) $dayPointer->format('j'),
+                'is_today' => $dayPointer->isToday(),
+                'entries' => $entriesForDay,
+            ];
+
+            $dayPointer->addDay();
+        }
 
         $leaveBalance = $employee
             ? (float) $employee->leaveBalances()->sum('remaining_days')
@@ -90,8 +143,10 @@ class PortalController extends Controller
             'calendar' => [
                 'month_label' => now()->format('F Y'),
                 'today' => (int) now()->format('j'),
+                'cells' => $calendarCells,
                 'events' => $calendarEvents,
             ],
+            'academicCalendarEntries' => $academicCalendarPayload,
         ]);
     }
 

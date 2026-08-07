@@ -3,10 +3,10 @@
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\Admin\PortalController as AdminPortalController;
 use App\Http\Controllers\Admin\DashboardController as AdminDashboardController;
+use App\Http\Controllers\Admin\AcademicCalendarController;
 use App\Http\Controllers\Admin\OperationsController as AdminOperationsController;
 use App\Http\Controllers\Admin\ScheduleManagementController as AdminScheduleManagementController;
 use App\Http\Controllers\Admin\RoleManagementController;
-use App\Http\Controllers\Admin\ActivityLogsController;
 use App\Http\Controllers\Employee\PortalController as EmployeePortalController;
 use App\Http\Controllers\Employee\WfhMonitoringController as EmployeeWfhMonitoringController;
 use App\Http\Controllers\Hr\AnnouncementController;
@@ -295,9 +295,12 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'user.type:1'])->gro
         Route::put('/{user}', [RoleManagementController::class, 'updateRole'])->whereNumber('user')->name('update');
     });
 
-    // ========== ACTIVITY LOGS (PLACEHOLDER) ==========
-    Route::prefix('activity-logs')->name('activity-logs.')->group(function () {
-        Route::get('/', [ActivityLogsController::class, 'index'])->name('index');
+    // ========== ACADEMIC CALENDAR ==========
+    Route::prefix('academic-calendar')->name('academic-calendar.')->group(function () {
+        Route::get('/', [AcademicCalendarController::class, 'index'])->name('index');
+        Route::post('/', [AcademicCalendarController::class, 'store'])->name('store');
+        Route::put('/{academicCalendarEntry}', [AcademicCalendarController::class, 'update'])->whereNumber('academicCalendarEntry')->name('update');
+        Route::delete('/{academicCalendarEntry}', [AcademicCalendarController::class, 'destroy'])->whereNumber('academicCalendarEntry')->name('destroy');
     });
 
     // ========== ADMIN EMPLOYEES ==========
