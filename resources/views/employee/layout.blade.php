@@ -38,7 +38,7 @@
             ['label' => 'Leave Monitoring', 'route' => 'employee.leave', 'match' => 'employee.leave', 'icon' => 'M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z'],
             ['label' => 'Notifications', 'route' => 'employee.notifications', 'match' => 'employee.notifications', 'icon' => 'M15 17h5l-1.4-1.4A2 2 0 0118 14.2V11a6 6 0 10-12 0v3.2a2 2 0 01-.6 1.4L4 17h5m6 0a3 3 0 11-6 0'],
             ['label' => 'Account', 'route' => 'employee.account', 'match' => 'employee.account', 'icon' => 'M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z'],
-            ['label' => 'Download APK', 'href' => 'https://youtu.be/QDia3e12czc?si=gCTbJuGrrBrWbbvv', 'match' => '__never__', 'icon' => 'M4 16v1a2 2 0 002 2h12a2 2 0 002-2v-1M12 4v10m0 0l-4-4m4 4l4-4'],
+            ['label' => 'Download APK', 'href' => 'https://i1.sndcdn.com/artworks-000140532587-c3uj9a-t500x500.jpg', 'match' => '__never__', 'icon' => 'M4 16v1a2 2 0 002 2h12a2 2 0 002-2v-1M12 4v10m0 0l-4-4m4 4l4-4'],
         ];
     @endphp
 
