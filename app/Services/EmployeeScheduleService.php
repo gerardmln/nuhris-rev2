@@ -98,7 +98,24 @@ class EmployeeScheduleService
     {
         $academicDayType = $this->academicCalendarDayType($date);
 
+        $submission = $this->approvedSubmissionForDate($employee, $date);
+        $scheduleDay = $submission?->days->firstWhere('day_index', (int) $date->dayOfWeekIso);
+        $hasScheduledWork = (bool) ($scheduleDay?->has_work);
+
         if ($academicDayType === 'non_working') {
+            if ($hasScheduledWork) {
+                return [
+                    'schedule_status' => 'validated',
+                    'schedule_notes' => 'Academic calendar non-working date (holiday): auto-marked present due to scheduled shift',
+                    'scheduled_time_in' => $scheduleDay?->time_in?->format('H:i:s'),
+                    'scheduled_time_out' => $scheduleDay?->time_out?->format('H:i:s'),
+                    'tardiness_minutes' => 0,
+                    'undertime_minutes' => 0,
+                    'overtime_minutes' => 0,
+                    'status' => 'present',
+                ];
+            }
+
             return [
                 'schedule_status' => 'non_working_day',
                 'schedule_notes' => 'Academic calendar non-working date',
@@ -116,8 +133,6 @@ class EmployeeScheduleService
         if ($approvedLeave) {
             return $this->evaluateApprovedLeaveRecord($employee, $approvedLeave, $date, $timeIn, $timeOut);
         }
-
-        $submission = $this->approvedSubmissionForDate($employee, $date);
 
         if (! $submission) {
             if ($academicDayType === 'working') {
@@ -145,7 +160,7 @@ class EmployeeScheduleService
             ];
         }
 
-        $day = $submission->days->firstWhere('day_index', (int) $date->dayOfWeekIso);
+        $day = $scheduleDay;
 
         if (! $day) {
             if ($academicDayType === 'working') {
