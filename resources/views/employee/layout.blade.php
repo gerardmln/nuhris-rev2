@@ -20,6 +20,7 @@
         .nav-item:nth-child(5) { animation-delay: 0.18s; }
         .nav-item:nth-child(6) { animation-delay: 0.22s; }
         .nav-item:nth-child(7) { animation-delay: 0.26s; }
+        .nav-item:nth-child(8) { animation-delay: 0.30s; }
     </style>
 </head>
 <body class="min-h-screen bg-[#eceef1] text-slate-900 antialiased overflow-x-hidden overflow-y-auto">
@@ -37,6 +38,7 @@
             ['label' => 'Leave Monitoring', 'route' => 'employee.leave', 'match' => 'employee.leave', 'icon' => 'M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z'],
             ['label' => 'Notifications', 'route' => 'employee.notifications', 'match' => 'employee.notifications', 'icon' => 'M15 17h5l-1.4-1.4A2 2 0 0118 14.2V11a6 6 0 10-12 0v3.2a2 2 0 01-.6 1.4L4 17h5m6 0a3 3 0 11-6 0'],
             ['label' => 'Account', 'route' => 'employee.account', 'match' => 'employee.account', 'icon' => 'M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z'],
+            ['label' => 'Download APK', 'href' => 'https://youtu.be/QDia3e12czc?si=gCTbJuGrrBrWbbvv', 'match' => '__never__', 'icon' => 'M4 16v1a2 2 0 002 2h12a2 2 0 002-2v-1M12 4v10m0 0l-4-4m4 4l4-4'],
         ];
     @endphp
 
@@ -59,7 +61,7 @@
                     @foreach ($navItems as $item)
                         @php($active = request()->routeIs($item['match']))
                         <li class="nav-item">
-                            <a href="{{ route($item['route']) }}"
+                            <a href="{{ $item['href'] ?? route($item['route']) }}"
                                class="group flex items-center gap-3 rounded-xl px-3.5 py-2.5 text-[14px] font-semibold transition-all duration-200 {{ $active ? 'bg-yellow-400 text-blue-950 shadow-md shadow-yellow-400/20' : 'text-blue-100 hover:bg-white/10 hover:text-white hover:translate-x-0.5' }}"
                                data-testid="employee-nav-{{ \Illuminate\Support\Str::slug($item['label']) }}">
                                 <svg class="h-[18px] w-[18px] shrink-0 {{ $active ? 'text-blue-950' : 'text-blue-200 group-hover:text-white' }}" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24">
