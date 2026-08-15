@@ -9,6 +9,7 @@ use App\Mail\EmployeeCredentialsMail;
 use App\Models\Department;
 use App\Models\Employee;
 use App\Models\User;
+use App\Services\SupabaseAuthSyncService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -137,7 +138,12 @@ class EmployeeController extends Controller
         $previousEmail = $employee->email;
         $employee->update($payload);
 
-        User::query()->where('email', $previousEmail)->update(['email' => $employee->email, 'name' => $employee->full_name]);
+        $user = User::query()->where('email', $previousEmail)->first();
+
+        if ($user) {
+            $user->forceFill(['email' => $employee->email, 'name' => $employee->full_name])->save();
+            app(SupabaseAuthSyncService::class)->syncUser($user, null);
+        }
 
         return redirect()->route('admin.employees.index')->with('success', 'Employee updated successfully.');
     }
@@ -149,7 +155,13 @@ class EmployeeController extends Controller
 
         try {
             DB::transaction(function () use ($employee, $email) {
-                User::query()->where('email', $email)->delete();
+                $user = User::query()->where('email', $email)->first();
+
+                if ($user) {
+                    app(SupabaseAuthSyncService::class)->deleteUser($user);
+                    $user->delete();
+                }
+
                 $employee->forceDelete();
             });
         } catch (\Throwable $exception) {
@@ -198,18 +210,21 @@ class EmployeeController extends Controller
             $user = User::query()->where('email', $employee->email)->first();
 
             if (! $user) {
-                User::create([
+                $user = User::create([
                     'name' => $employee->full_name,
                     'email' => $employee->email,
                     'password' => Hash::make($tempPassword),
                     'user_type' => User::TYPE_EMPLOYEE,
                 ]);
 
+                app(SupabaseAuthSyncService::class)->syncUser($user, $tempPassword);
+
                 return;
             }
 
             if ($forceReset) {
                 $user->forceFill(['name' => $employee->full_name, 'password' => Hash::make($tempPassword)])->save();
+                app(SupabaseAuthSyncService::class)->updateUserPassword($user, $tempPassword);
             }
         });
 

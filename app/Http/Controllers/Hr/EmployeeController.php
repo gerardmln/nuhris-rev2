@@ -9,6 +9,7 @@ use App\Mail\EmployeeCredentialsMail;
 use App\Models\Department;
 use App\Models\Employee;
 use App\Models\User;
+use App\Services\SupabaseAuthSyncService;
 use App\Services\LeaveMonitoringService;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Http\RedirectResponse;
@@ -167,12 +168,16 @@ class EmployeeController extends Controller
 
         // Keep the linked User row aligned with employee profile changes
         // without touching whatever password the employee currently uses.
-        User::query()
-            ->where('email', $previousEmail)
-            ->update([
+        $user = User::query()->where('email', $previousEmail)->first();
+
+        if ($user) {
+            $user->forceFill([
                 'email' => $employee->email,
                 'name' => $employee->full_name,
-            ]);
+            ])->save();
+
+            app(SupabaseAuthSyncService::class)->syncUser($user, null);
+        }
 
         return redirect()
             ->route('employees.index')
@@ -186,9 +191,12 @@ class EmployeeController extends Controller
 
         try {
             DB::transaction(function () use ($employee, $email) {
-                // Hard delete the linked user account (by email).
-                // This cascades to announcement_notifications via FK cascadeOnDelete.
-                User::query()->where('email', $email)->delete();
+                $user = User::query()->where('email', $email)->first();
+
+                if ($user) {
+                    app(SupabaseAuthSyncService::class)->deleteUser($user);
+                    $user->delete();
+                }
 
                 // Hard delete the employee row itself. Cascades configured in
                 // migrations will also remove employee_credentials,
@@ -275,12 +283,14 @@ class EmployeeController extends Controller
             $user = User::query()->where('email', $employee->email)->first();
 
             if (! $user) {
-                User::create([
+                $user = User::create([
                     'name' => $employee->full_name,
                     'email' => $employee->email,
                     'password' => Hash::make($tempPassword),
                     'user_type' => User::TYPE_EMPLOYEE,
                 ]);
+
+                app(SupabaseAuthSyncService::class)->syncUser($user, $tempPassword);
 
                 return;
             }
@@ -290,6 +300,7 @@ class EmployeeController extends Controller
                     'name' => $employee->full_name,
                     'password' => Hash::make($tempPassword),
                 ])->save();
+                app(SupabaseAuthSyncService::class)->updateUserPassword($user, $tempPassword);
             }
         });
 
