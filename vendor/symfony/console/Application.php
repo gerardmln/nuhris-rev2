@@ -551,6 +551,16 @@ class Application implements ResetInterface
     }
 
     /**
+     * @deprecated since Symfony 7.4, use Application::addCommand() instead
+     */
+    public function add(Command $command): ?Command
+    {
+        trigger_deprecation('symfony/console', '7.4', 'The "%s()" method is deprecated and will be removed in Symfony 8.0, use "%s::addCommand()" instead.', __METHOD__, self::class);
+
+        return $this->addCommand($command);
+    }
+
+    /**
      * Adds a command object.
      *
      * If a command with the same name already exists, it will be overridden.
@@ -787,7 +797,7 @@ class Application implements ResetInterface
             foreach ($abbrevs as $abbrev) {
                 $maxLen = max(Helper::width($abbrev), $maxLen);
             }
-            $abbrevs = array_map(function ($cmd) use ($commandList, $usableWidth, $maxLen, &$commands) {
+            $abbrevs = array_map(static function ($cmd) use ($commandList, $usableWidth, $maxLen, &$commands) {
                 if ($commandList[$cmd]->isHidden()) {
                     unset($commands[array_search($cmd, $commands)]);
 
@@ -902,7 +912,7 @@ class Application implements ResetInterface
             }
 
             if (str_contains($message, "@anonymous\0")) {
-                $message = preg_replace_callback('/[a-zA-Z_\x7f-\xff][\\\\a-zA-Z0-9_\x7f-\xff]*+@anonymous\x00.*?\.php(?:0x?|:[0-9]++\$)?[0-9a-fA-F]++/', fn ($m) => class_exists($m[0], false) ? (get_parent_class($m[0]) ?: key(class_implements($m[0])) ?: 'class').'@anonymous' : $m[0], $message);
+                $message = preg_replace_callback('/[a-zA-Z_\x7f-\xff][\\\\a-zA-Z0-9_\x7f-\xff]*+@anonymous\x00.*?\.php(?:0x?|:[0-9]++\$)?[0-9a-fA-F]++/', static fn ($m) => class_exists($m[0], false) ? (get_parent_class($m[0]) ?: key(class_implements($m[0])) ?: 'class').'@anonymous' : $m[0], $message);
             }
 
             $width = $this->terminal->getWidth() ? $this->terminal->getWidth() - 1 : \PHP_INT_MAX;
@@ -1242,7 +1252,7 @@ class Application implements ResetInterface
             }
         }
 
-        $alternatives = array_filter($alternatives, fn ($lev) => $lev < 2 * $threshold);
+        $alternatives = array_filter($alternatives, static fn ($lev) => $lev < 2 * $threshold);
         ksort($alternatives, \SORT_NATURAL | \SORT_FLAG_CASE);
 
         return array_keys($alternatives);
@@ -1306,9 +1316,7 @@ class Application implements ResetInterface
 
         $lines[] = \count($lines) ? str_pad($line, $width) : $line;
 
-        mb_convert_variables($encoding, 'utf8', $lines);
-
-        return $lines;
+        return mb_convert_encoding($lines, $encoding, 'utf8');
     }
 
     /**
@@ -1340,8 +1348,14 @@ class Application implements ResetInterface
         }
         $this->initialized = true;
 
+        if ((new \ReflectionMethod($this, 'add'))->getDeclaringClass()->getName() !== (new \ReflectionMethod($this, 'addCommand'))->getDeclaringClass()->getName()) {
+            $adder = $this->add(...);
+        } else {
+            $adder = $this->addCommand(...);
+        }
+
         foreach ($this->getDefaultCommands() as $command) {
-            $this->addCommand($command);
+            $adder($command);
         }
     }
 }

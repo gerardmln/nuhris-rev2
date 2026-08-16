@@ -147,6 +147,7 @@ class ApplicationBuilder
      * @param  string|null  $commands
      * @param  string|null  $channels
      * @param  string|null  $pages
+     * @param  string|null  $health
      * @param  string  $apiPrefix
      * @param  callable|null  $then
      * @return $this
@@ -387,7 +388,7 @@ class ApplicationBuilder
     /**
      * Register and configure the application's exception handler.
      *
-     * @param  callable(\Illuminate\Foundation\Configuration\Exceptions)|null  $using
+     * @param  (callable(\Illuminate\Foundation\Configuration\Exceptions): mixed)|null  $using
      * @return $this
      */
     public function withExceptions(?callable $using = null)

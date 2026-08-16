@@ -514,7 +514,7 @@ class MailManager implements FactoryContract
         $address = Arr::get($config, $type, $this->app['config']['mail.'.$type]);
 
         if (is_array($address) && isset($address['address'])) {
-            $mailer->{'always'.Str::studly($type)}($address['address'], $address['name']);
+            $mailer->{'always'.Str::studly($type)}($address['address'], $address['name'] ?? null);
         }
     }
 
@@ -559,11 +559,13 @@ class MailManager implements FactoryContract
     /**
      * Set the default mail driver name.
      *
-     * @param  string  $name
+     * @param  \UnitEnum|string  $name
      * @return void
      */
-    public function setDefaultDriver(string $name)
+    public function setDefaultDriver($name)
     {
+        $name = enum_value($name);
+
         if ($this->app['config']['mail.driver']) {
             $this->app['config']['mail.driver'] = $name;
         }

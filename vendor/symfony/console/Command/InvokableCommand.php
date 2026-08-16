@@ -41,6 +41,7 @@ class InvokableCommand implements SignalableCommandInterface
      * @var list<Interaction>|null
      */
     private ?array $interactions = null;
+    private bool $triggerDeprecations = false;
     private $code;
 
     public function __construct(
@@ -60,6 +61,12 @@ class InvokableCommand implements SignalableCommandInterface
         $statusCode = $this->invokable->invoke(...$this->getParameters($this->invokable, $input, $output));
 
         if (!\is_int($statusCode)) {
+            if ($this->triggerDeprecations) {
+                trigger_deprecation('symfony/console', '7.3', \sprintf('Returning a non-integer value from the command "%s" is deprecated and will throw an exception in Symfony 8.0.', $this->command->getName()));
+
+                return 0;
+            }
+
             throw new \TypeError(\sprintf('The command "%s" must return an integer value in the "%s" method, but "%s" was returned.', $this->command->getName(), $this->invokable->getName(), get_debug_type($statusCode)));
         }
 
@@ -86,10 +93,10 @@ class InvokableCommand implements SignalableCommandInterface
             }
 
             if ($input = MapInput::tryFrom($parameter)) {
-                $inputArguments = array_map(fn (Argument $a) => $a->toInputArgument(), iterator_to_array($input->getArguments(), false));
+                $inputArguments = array_map(static fn (Argument $a) => $a->toInputArgument(), iterator_to_array($input->getArguments(), false));
 
                 // make sure optional arguments are defined after required ones
-                usort($inputArguments, fn (InputArgument $a, InputArgument $b) => (int) $b->isRequired() - (int) $a->isRequired());
+                usort($inputArguments, static fn (InputArgument $a, InputArgument $b) => (int) $b->isRequired() - (int) $a->isRequired());
 
                 foreach ($inputArguments as $inputArgument) {
                     $definition->addArgument($inputArgument);
@@ -112,6 +119,8 @@ class InvokableCommand implements SignalableCommandInterface
         if (!$code instanceof \Closure) {
             return $code(...);
         }
+
+        $this->triggerDeprecations = true;
 
         if (null !== (new \ReflectionFunction($code))->getClosureThis()) {
             return $code;
@@ -154,6 +163,12 @@ class InvokableCommand implements SignalableCommandInterface
             $type = $parameter->getType();
 
             if (!$type instanceof \ReflectionNamedType) {
+                if ($this->triggerDeprecations) {
+                    trigger_deprecation('symfony/console', '7.3', \sprintf('Omitting the type declaration for the parameter "$%s" is deprecated and will throw an exception in Symfony 8.0.', $parameter->getName()));
+
+                    continue;
+                }
+
                 throw new LogicException(\sprintf('The parameter "$%s" must have a named type. Untyped, Union or Intersection types are not supported.', $parameter->getName()));
             }
 

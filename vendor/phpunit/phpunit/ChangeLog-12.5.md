@@ -2,6 +2,84 @@
 
 All notable changes of the PHPUnit 12.5 release series are documented in this file using the [Keep a CHANGELOG](https://keepachangelog.com/) principles.
 
+## [12.5.33] - 2026-07-28
+
+### Fixed
+
+* [#6861](https://github.com/sebastianbergmann/phpunit/issues/6861): Hook methods run twice when a template method is marked with its corresponding attribute
+* Regression that stopped test methods from being sorted by source code location
+
+## [12.5.32] - 2026-07-25
+
+### Fixed
+
+* [#6833](https://github.com/sebastianbergmann/phpunit/issues/6833): `assertArrayHasKey()` does not accept `ArrayAccess` implementations with a specific value type when test code is analysed with PHPStan at level 9
+* [#6854](https://github.com/sebastianbergmann/phpunit/issues/6854): Deprecation triggered in first-party code is wrongly classified as indirect when the first-party code is called from third-party code
+
+## [12.5.31] - 2026-07-06
+
+### Changed
+
+* [#6797](https://github.com/sebastianbergmann/phpunit/issues/6797): Adapt code generated for test double of interface with constructor for PHP 8.6
+
+## [12.5.30] - 2026-06-15
+
+### Fixed
+
+* [#6743](https://github.com/sebastianbergmann/phpunit/issues/6743): Improve error message for invalid version constraint in attribute
+* Class, method, and data-set names in TestDox HTML report are not escaped
+
+## [12.5.29] - 2026-06-04
+
+### Fixed
+
+* [#6683](https://github.com/sebastianbergmann/phpunit/issues/6683): `assertNotEquals()` failure message says "is equal to" instead of "is not equal to" when comparing arrays or objects
+* [#6700](https://github.com/sebastianbergmann/phpunit/issues/6700): `expectOutputString()` and `expectOutputRegex()` silently replace themselves and each other
+
+## [12.5.28] - 2026-05-27
+
+### Fixed
+
+* [#6681](https://github.com/sebastianbergmann/phpunit/pull/6681): XML assertions such as `assertXmlStringEqualsXmlString()` regressed into treating comments as significant
+
+## [12.5.27] - 2026-05-25
+
+### Fixed
+
+* [#6673](https://github.com/sebastianbergmann/phpunit/issues/6673): Empty PHP settings from the parent process override per-test `-d` settings forwarded to child processes (breaks PCOV coverage)
+
+## [12.5.26] - 2026-05-21
+
+### Fixed
+
+* PHP setting values containing `=` need to be quoted before forwarding via `-d`
+
+## [12.5.25] - 2026-05-13
+
+### Changed
+
+* A `Test` or `Tests` prefix is no longer stripped from class names when they are processed for TestDox output
+
+### Fixed
+
+* [#6605](https://github.com/sebastianbergmann/phpunit/issues/6605): Data set names and provider values containing Unicode bidirectional control characters distort terminal output
+* [#6610](https://github.com/sebastianbergmann/phpunit/issues/6610): Per-testsuite bootstrap script not loaded in process isolation
+* TestDox output collapsed separate test classes into a single group when their prettified class names matched
+
+## [12.5.24] - 2026-05-01
+
+### Added
+
+* [#6596](https://github.com/sebastianbergmann/phpunit/issues/6596): Backport `TestCase::invokeTestMethod()` method for customizing test method invocation from PHPUnit 13
+
+### Fixed
+
+* [#6595](https://github.com/sebastianbergmann/phpunit/issues/6595): Crash when before-class or after-class method fails with assertion failure
+* [#6599](https://github.com/sebastianbergmann/phpunit/issues/6599): TeamCity logger does not wrap failures in before-test methods with `testStarted` and `testFinished`
+* [#6601](https://github.com/sebastianbergmann/phpunit/issues/6601): Anonymous classes are not rejected with a clear error when creating a test double
+* `MockBuilder::setMockClassName()` and `TestStubBuilder::setStubClassName()` now reject values that are not valid unqualified PHP class identifiers, throwing the new `InvalidClassNameException`
+* The regular expression used by `Generator::ensureValidMethods()` to validate method names passed to `MockBuilder::onlyMethods()` and `addMethods()` was not anchored, so any string containing a valid identifier substring (including strings with parentheses, braces, comments, or newlines) was accepted
+
 ## [12.5.23] - 2026-04-18
 
 ### Changed
@@ -208,6 +286,16 @@ All notable changes of the PHPUnit 12.5 release series are documented in this fi
 * [#6380](https://github.com/sebastianbergmann/phpunit/pull/6380): Allow `Throwable` in `expectExceptionObject()`
 * A PHPUnit notice is now emitted for test methods that create a mock object but do not configure an expectation for it
 
+[12.5.33]: https://github.com/sebastianbergmann/phpunit/compare/12.5.32...12.5.33
+[12.5.32]: https://github.com/sebastianbergmann/phpunit/compare/12.5.31...12.5.32
+[12.5.31]: https://github.com/sebastianbergmann/phpunit/compare/12.5.30...12.5.31
+[12.5.30]: https://github.com/sebastianbergmann/phpunit/compare/12.5.29...12.5.30
+[12.5.29]: https://github.com/sebastianbergmann/phpunit/compare/12.5.28...12.5.29
+[12.5.28]: https://github.com/sebastianbergmann/phpunit/compare/12.5.27...12.5.28
+[12.5.27]: https://github.com/sebastianbergmann/phpunit/compare/12.5.26...12.5.27
+[12.5.26]: https://github.com/sebastianbergmann/phpunit/compare/12.5.25...12.5.26
+[12.5.25]: https://github.com/sebastianbergmann/phpunit/compare/12.5.24...12.5.25
+[12.5.24]: https://github.com/sebastianbergmann/phpunit/compare/12.5.23...12.5.24
 [12.5.23]: https://github.com/sebastianbergmann/phpunit/compare/12.5.22...12.5.23
 [12.5.22]: https://github.com/sebastianbergmann/phpunit/compare/12.5.21...12.5.22
 [12.5.21]: https://github.com/sebastianbergmann/phpunit/compare/12.5.20...12.5.21

@@ -6,9 +6,11 @@ use Exception;
 use Illuminate\Bus\Batchable;
 use Illuminate\Bus\BatchRepository;
 use Illuminate\Bus\DebounceLock;
+use Illuminate\Bus\Queueable;
 use Illuminate\Bus\UniqueLock;
 use Illuminate\Contracts\Bus\Dispatcher;
 use Illuminate\Contracts\Cache\Factory as CacheFactory;
+use Illuminate\Contracts\Cache\LockProvider;
 use Illuminate\Contracts\Cache\Repository as Cache;
 use Illuminate\Contracts\Container\Container;
 use Illuminate\Contracts\Encryption\Encrypter;
@@ -37,6 +39,13 @@ class CallQueuedHandler
      * @var \Illuminate\Contracts\Container\Container
      */
     protected $container;
+
+    /**
+     * The command currently being processed.
+     *
+     * @var mixed
+     */
+    protected $runningCommand;
 
     /**
      * Create a new handler instance.
@@ -71,7 +80,13 @@ class CallQueuedHandler
             return $this->deleteDebouncedJob($job, $command);
         }
 
-        $this->dispatchThroughMiddleware($job, $command);
+        $this->runningCommand = $command;
+
+        try {
+            $this->dispatchThroughMiddleware($job, $command);
+        } finally {
+            $this->runningCommand = null;
+        }
 
         if (! $job->isReleased() && ! $this->commandShouldBeUniqueUntilProcessing($command)) {
             $this->ensureUniqueJobLockIsReleased($command);
@@ -126,12 +141,12 @@ class CallQueuedHandler
         return (new Pipeline($this->container))->send($command)
             ->through(array_merge(method_exists($command, 'middleware') ? $command->middleware() : [], $command->middleware ?? []))
             ->finally(function ($command) use (&$lockReleased) {
-                if (! $lockReleased && $this->commandShouldBeUniqueUntilProcessing($command) && ! $command->job->isReleased() && $command->job->attempts() <= 1) {
+                if (! $lockReleased && $this->commandShouldBeUniqueUntilProcessing($command) && ! $command->job->isReleased() && $this->uniqueJobLockShouldBeReleased($command->job, $command)) {
                     $this->ensureUniqueJobLockIsReleased($command);
                 }
             })
             ->then(function ($command) use ($job, &$lockReleased) {
-                if ($this->commandShouldBeUniqueUntilProcessing($command) && $job->attempts() <= 1) {
+                if ($this->commandShouldBeUniqueUntilProcessing($command) && $this->uniqueJobLockShouldBeReleased($job, $command)) {
                     $this->ensureUniqueJobLockIsReleased($command);
 
                     $lockReleased = true;
@@ -210,6 +225,21 @@ class CallQueuedHandler
     }
 
     /**
+     * Determine if the unique job lock can be safely released.
+     *
+     * @param  \Illuminate\Contracts\Queue\Job  $job
+     * @param  mixed  $command
+     * @return bool
+     */
+    protected function uniqueJobLockShouldBeReleased(Job $job, $command)
+    {
+        return $job->attempts() <= 1 ||
+            (isset(class_uses_recursive($command)[Queueable::class]) &&
+             is_string($command->uniqueLockOwner ?? null) &&
+             $command->uniqueLockOwner !== '');
+    }
+
+    /**
      * Ensure the lock for a unique job is released.
      *
      * @param  mixed  $command
@@ -238,12 +268,14 @@ class CallQueuedHandler
 
         $lock = new DebounceLock($this->container->make(Cache::class));
 
+        $currentOwner = $lock->getCurrentOwner($command);
+
         // Fail-open: if the lock no longer exists (cache eviction, TTL expiry), let the job execute...
-        if (! $lock->lockExists($command)) {
+        if (is_null($currentOwner)) {
             return false;
         }
 
-        return ! $lock->isCurrentOwner($command, $owner);
+        return $currentOwner !== $owner;
     }
 
     /**
@@ -318,16 +350,20 @@ class CallQueuedHandler
 
         $context = $this->container->make(ContextRepository::class);
 
-        [$store, $key] = [
+        [$store, $key, $owner] = [
             $context->getHidden('laravel_unique_job_cache_store'),
             $context->getHidden('laravel_unique_job_key'),
+            $context->getHidden('laravel_unique_job_lock_owner'),
         ];
 
         if ($store && $key) {
-            $this->container->make(CacheFactory::class)
-                ->store($store)
-                ->lock($key)
-                ->forceRelease();
+            $cache = $this->container->make(CacheFactory::class)->store($store);
+
+            if (is_string($owner) && $owner !== '' && $cache->getStore() instanceof LockProvider) {
+                $cache->restoreLock($key, $owner)->release();
+            } elseif (is_null($owner) || $owner === '') {
+                $cache->lock($key)->forceRelease();
+            }
         }
     }
 
@@ -427,5 +463,15 @@ class CallQueuedHandler
         if (method_exists($command, 'invokeChainCatchCallbacks')) {
             $command->invokeChainCatchCallbacks($e);
         }
+    }
+
+    /**
+     * Get the command currently being processed.
+     *
+     * @return mixed
+     */
+    public function getRunningCommand()
+    {
+        return $this->runningCommand;
     }
 }

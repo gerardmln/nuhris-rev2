@@ -9,10 +9,12 @@
  */
 namespace PHPUnit\Logging\TestDox;
 
+use function array_keys;
 use function array_merge;
 use function assert;
 use function is_subclass_of;
-use function ksort;
+use function strnatcasecmp;
+use function uasort;
 use function uksort;
 use function usort;
 use PHPUnit\Event\Code\TestMethod;
@@ -51,7 +53,7 @@ final class TestResultCollector
     private readonly IssueFilter $issueFilter;
 
     /**
-     * @var array<string, list<TestDoxTestMethod>>
+     * @var array<class-string, list<TestDoxTestMethod>>
      */
     private array $tests          = [];
     private ?TestStatus $status   = null;
@@ -66,13 +68,13 @@ final class TestResultCollector
     }
 
     /**
-     * @return array<string, TestResultCollection>
+     * @return array<class-string, TestResultCollection>
      */
     public function testMethodsGroupedByClass(): array
     {
         $result = [];
 
-        foreach ($this->tests as $prettifiedClassName => $tests) {
+        foreach ($this->tests as $className => $tests) {
             $testsByDeclaringClass = [];
 
             foreach ($tests as $test) {
@@ -85,9 +87,9 @@ final class TestResultCollector
                 $testsByDeclaringClass[$declaringClassName][] = $test;
             }
 
-            foreach ($testsByDeclaringClass as $declaringClassName) {
+            foreach (array_keys($testsByDeclaringClass) as $declaringClassName) {
                 usort(
-                    $declaringClassName,
+                    $testsByDeclaringClass[$declaringClassName],
                     static function (TestDoxTestMethod $a, TestDoxTestMethod $b): int
                     {
                         return $a->test()->line() <=> $b->test()->line();
@@ -121,10 +123,19 @@ final class TestResultCollector
                 $tests = array_merge($tests, $_tests);
             }
 
-            $result[$prettifiedClassName] = TestResultCollection::fromArray($tests);
+            $result[$className] = TestResultCollection::fromArray($tests);
         }
 
-        ksort($result);
+        uasort(
+            $result,
+            static function (TestResultCollection $a, TestResultCollection $b): int
+            {
+                return strnatcasecmp(
+                    $a->asArray()[0]->test()->testDox()->prettifiedClassName(),
+                    $b->asArray()[0]->test()->testDox()->prettifiedClassName(),
+                );
+            },
+        );
 
         return $result;
     }
@@ -370,11 +381,11 @@ final class TestResultCollector
 
     private function process(TestMethod $test): void
     {
-        if (!isset($this->tests[$test->testDox()->prettifiedClassName()])) {
-            $this->tests[$test->testDox()->prettifiedClassName()] = [];
+        if (!isset($this->tests[$test->className()])) {
+            $this->tests[$test->className()] = [];
         }
 
-        $this->tests[$test->testDox()->prettifiedClassName()][] = new TestDoxTestMethod(
+        $this->tests[$test->className()][] = new TestDoxTestMethod(
             $test,
             $this->status,
             $this->throwable,

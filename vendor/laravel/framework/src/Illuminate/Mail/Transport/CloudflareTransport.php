@@ -61,12 +61,12 @@ class CloudflareTransport extends AbstractTransport
             );
         }
 
-        throw_if(
-            $response->getStatusCode() !== Response::HTTP_OK,
-            TransportException::class,
-            $result['errors'][0]['message'] ?? 'Unknown error',
-            $response->getStatusCode(),
-        );
+        if ($response->getStatusCode() !== Response::HTTP_OK) {
+            throw new TransportException(
+                $result['errors'][0]['message'] ?? 'Unknown error',
+                $response->getStatusCode(),
+            );
+        }
     }
 
     /**
@@ -131,13 +131,21 @@ class CloudflareTransport extends AbstractTransport
 
         foreach ($email->getAttachments() as $attachment) {
             $headers = $attachment->getPreparedHeaders();
+            $disposition = $headers->getHeaderBody('Content-Disposition') ?: 'attachment';
+            $filename = $headers->getHeaderParameter('Content-Disposition', 'filename');
 
-            $attachments[] = [
+            $item = [
                 'content' => str_replace("\r\n", '', $attachment->bodyToString()),
-                'filename' => $headers->getHeaderParameter('Content-Disposition', 'filename'),
+                'filename' => $filename,
                 'type' => $headers->get('Content-Type')->getBody(),
-                'disposition' => $headers->getHeaderBody('Content-Disposition') ?: 'attachment',
+                'disposition' => $disposition,
             ];
+
+            if ($disposition === 'inline') {
+                $item['content_id'] = $attachment->hasContentId() ? $attachment->getContentId() : $filename;
+            }
+
+            $attachments[] = $item;
         }
 
         return $attachments;
