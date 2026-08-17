@@ -224,7 +224,11 @@ class EmployeeController extends Controller
 
             if ($forceReset) {
                 $user->forceFill(['name' => $employee->full_name, 'password' => Hash::make($tempPassword)])->save();
-                app(SupabaseAuthSyncService::class)->updateUserPassword($user, $tempPassword);
+                $syncSuccess = app(SupabaseAuthSyncService::class)->updateUserPassword($user, $tempPassword);
+                
+                if (!$syncSuccess) {
+                    throw new \RuntimeException('Failed to synchronize password with authentication service. Employee will not be able to log in.');
+                }
             }
         });
 

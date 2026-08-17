@@ -49,7 +49,12 @@ class NewPasswordController extends Controller
                     'remember_token' => Str::random(60),
                 ])->save();
 
-                app(SupabaseAuthSyncService::class)->updateUserPassword($user, $request->password);
+                // Synchronize password to Supabase Auth
+                $syncSuccess = app(SupabaseAuthSyncService::class)->updateUserPassword($user, $request->password);
+                
+                if (!$syncSuccess) {
+                    throw new \RuntimeException('Failed to synchronize password with authentication service. Please try again.');
+                }
 
                 event(new PasswordReset($user));
             }
