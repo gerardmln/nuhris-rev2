@@ -15,11 +15,13 @@ use App\Models\EmployeeScheduleSubmission;
 use App\Models\User;
 use App\Services\EmployeeScheduleService;
 use App\Services\LeaveBalanceService;
+use App\Services\SupabaseAuthSyncService;
 use App\Services\SupabaseStorageService;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Hash;
 use Illuminate\View\View;
 
 class PortalController extends Controller
@@ -679,7 +681,7 @@ class PortalController extends Controller
      * Change the employee's password.
      * Requires current (old) password + new password + confirmation.
      */
-    public function changePassword(Request $request): RedirectResponse
+    public function changePassword(Request $request, SupabaseAuthSyncService $supabaseAuthSyncService): RedirectResponse
     {
         $request->validate([
             'current_password' => ['required', 'string'],
@@ -692,18 +694,29 @@ class PortalController extends Controller
         ]);
 
         $user = $request->user();
+        $newPassword = $request->input('new_password');
 
-        if (! \Illuminate\Support\Facades\Hash::check($request->input('current_password'), $user->password)) {
+        if (! Hash::check($request->input('current_password'), $user->password)) {
             return back()->withErrors([
                 'current_password' => 'The current password you entered is incorrect.',
             ])->with('password_error', true);
         }
 
         $user->forceFill([
-            'password' => \Illuminate\Support\Facades\Hash::make($request->input('new_password')),
+            'password' => Hash::make($newPassword),
         ])->save();
 
-        return redirect()->route('employee.account')->with('password_success', 'Password changed successfully.');
+        $synced = $supabaseAuthSyncService->updateUserPassword($user, $newPassword);
+
+        if (! $synced) {
+            return back()->withErrors([
+                'new_password' => 'Password was updated locally, but could not be synchronized with the mobile authentication system.',
+            ])->with('password_error', true);
+        }
+
+        return redirect()
+            ->route('employee.account')
+            ->with('password_success', 'Password changed successfully.');
     }
 
     private function buildAttendanceResult(array $totals, ?EmployeeScheduleSubmission $currentSchedule, bool $hasRecords): array
