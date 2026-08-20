@@ -21,7 +21,7 @@ use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Log;
 use Illuminate\View\View;
 
 class PortalController extends Controller
@@ -681,7 +681,7 @@ class PortalController extends Controller
      * Change the employee's password.
      * Requires current (old) password + new password + confirmation.
      */
-    public function changePassword(Request $request, SupabaseAuthSyncService $supabaseAuthSyncService): RedirectResponse
+    public function changePassword(Request $request): RedirectResponse
     {
         $request->validate([
             'current_password' => ['required', 'string'],
@@ -694,29 +694,36 @@ class PortalController extends Controller
         ]);
 
         $user = $request->user();
-        $newPassword = $request->input('new_password');
 
-        if (! Hash::check($request->input('current_password'), $user->password)) {
+        Log::info('EMPLOYEE PASSWORD CHANGE START', [
+            'user_id' => $user->id,
+            'email' => $user->email,
+        ]);
+
+        if (! \Illuminate\Support\Facades\Hash::check($request->input('current_password'), $user->password)) {
             return back()->withErrors([
                 'current_password' => 'The current password you entered is incorrect.',
             ])->with('password_error', true);
         }
 
         $user->forceFill([
-            'password' => Hash::make($newPassword),
+            'password' => \Illuminate\Support\Facades\Hash::make($request->input('new_password')),
         ])->save();
 
-        $synced = $supabaseAuthSyncService->updateUserPassword($user, $newPassword);
+        Log::info('EMPLOYEE PASSWORD SYNC START', [
+            'user_id' => $user->id,
+            'email' => $user->email,
+        ]);
 
-        if (! $synced) {
-            return back()->withErrors([
-                'new_password' => 'Password was updated locally, but could not be synchronized with the mobile authentication system.',
-            ])->with('password_error', true);
-        }
+        $synced = app(SupabaseAuthSyncService::class)->updateUserPassword($user, $request->input('new_password'));
 
-        return redirect()
-            ->route('employee.account')
-            ->with('password_success', 'Password changed successfully.');
+        Log::info('EMPLOYEE PASSWORD SYNC RESULT', [
+            'user_id' => $user->id,
+            'email' => $user->email,
+            'synced' => $synced,
+        ]);
+
+        return redirect()->route('employee.account')->with('password_success', 'Password changed successfully.');
     }
 
     private function buildAttendanceResult(array $totals, ?EmployeeScheduleSubmission $currentSchedule, bool $hasRecords): array

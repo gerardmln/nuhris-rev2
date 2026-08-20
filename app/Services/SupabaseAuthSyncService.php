@@ -64,23 +64,59 @@ class SupabaseAuthSyncService
 
     public function updateUserPassword(User $user, string $password): bool
     {
+        Log::info('SUPABASE PASSWORD SYNC CONFIG', [
+            'configured' => $this->isConfigured(),
+            'has_url' => $this->baseUrl !== '',
+            'has_service_key' => $this->serviceKey !== '',
+        ]);
+
         if (! $this->isConfigured() || ! filled($user->email)) {
+            Log::warning('SUPABASE PASSWORD SYNC ABORTED', [
+                'user_id' => $user->id,
+                'email' => $user->email,
+            ]);
+
             return false;
         }
 
-        $supabaseUserId = $this->findSupabaseUserIdByEmail($user->email);
+        $lookup = $this->findSupabaseUserIdByEmail($user->email);
+        $supabaseUserId = $lookup['id'];
+        $supabaseEmail = $lookup['email'];
+
+        Log::info('SUPABASE USER LOOKUP RESULT', [
+            'laravel_user_id' => $user->id,
+            'email' => $user->email,
+            'supabase_user_id' => $supabaseUserId,
+            'supabase_email' => $supabaseEmail,
+        ]);
 
         if (! $supabaseUserId) {
-            return $this->syncUser($user, $password);
+            $syncResult = $this->syncUser($user, $password);
+
+            Log::info('SUPABASE PASSWORD CREATE RESULT', [
+                'laravel_user_id' => $user->id,
+                'email' => $user->email,
+                'successful' => $syncResult,
+            ]);
+
+            return $syncResult;
         }
 
         $response = Http::withHeaders([
             'Authorization' => 'Bearer '.$this->serviceKey,
             'apikey' => $this->serviceKey,
             'Content-Type' => 'application/json',
-        ])->patch($this->baseUrl.'/auth/v1/admin/users/'.$supabaseUserId, [
+        ])->put($this->baseUrl.'/auth/v1/admin/users/'.$supabaseUserId, [
             'password' => $password,
             'email_confirm' => true,
+        ]);
+
+        Log::info('SUPABASE PASSWORD PATCH RESULT', [
+            'laravel_user_id' => $user->id,
+            'email' => $user->email,
+            'supabase_user_id' => $supabaseUserId,
+            'status' => $response->status(),
+            'successful' => $response->successful(),
         ]);
 
         if (! $response->successful()) {
@@ -88,7 +124,6 @@ class SupabaseAuthSyncService
                 'user_id' => $user->id,
                 'email' => $user->email,
                 'status' => $response->status(),
-                'body' => $response->body(),
             ]);
 
             return false;
@@ -103,7 +138,8 @@ class SupabaseAuthSyncService
             return false;
         }
 
-        $supabaseUserId = $this->findSupabaseUserIdByEmail($user->email);
+        $lookup = $this->findSupabaseUserIdByEmail($user->email);
+        $supabaseUserId = $lookup['id'];
 
         if (! $supabaseUserId) {
             return true;
@@ -128,27 +164,59 @@ class SupabaseAuthSyncService
         return true;
     }
 
-    protected function findSupabaseUserIdByEmail(string $email): ?string
+    protected function findSupabaseUserIdByEmail(string $email): array
     {
-        $response = Http::withHeaders([
-            'Authorization' => 'Bearer '.$this->serviceKey,
-            'apikey' => $this->serviceKey,
-        ])->get($this->baseUrl.'/auth/v1/admin/users', [
-            'email' => $email,
-            'page' => 1,
-            'per_page' => 1,
+        $targetEmail = strtolower(trim($email));
+        $page = 1;
+        $perPage = 50;
+
+        while (true) {
+            $response = Http::withHeaders([
+                'Authorization' => 'Bearer '.$this->serviceKey,
+                'apikey' => $this->serviceKey,
+            ])->get($this->baseUrl.'/auth/v1/admin/users', [
+                'page' => $page,
+                'per_page' => $perPage,
+            ]);
+
+            if (! $response->successful()) {
+                Log::warning('Supabase admin list-users request failed', [
+                    'page' => $page,
+                    'status' => $response->status(),
+                ]);
+
+                return ['id' => null, 'email' => null];
+            }
+
+            $users = $response->json('users') ?? [];
+
+            if (! is_array($users) || $users === []) {
+                return ['id' => null, 'email' => null];
+            }
+
+            foreach ($users as $supabaseUser) {
+                $supabaseEmail = strtolower(trim((string) ($supabaseUser['email'] ?? '')));
+
+                if ($supabaseEmail === $targetEmail) {
+                    return [
+                        'id' => (string) ($supabaseUser['id'] ?? ''),
+                        'email' => (string) ($supabaseUser['email'] ?? ''),
+                    ];
+                }
+            }
+
+            if (count($users) < $perPage) {
+                break;
+            }
+
+            $page++;
+        }
+
+        Log::warning('Supabase findByEmail: no exact match found', [
+            'target_email' => $targetEmail,
+            'pages_searched' => $page,
         ]);
 
-        if (! $response->successful()) {
-            return null;
-        }
-
-        $users = $response->json('users') ?? [];
-
-        if (! is_array($users) || $users === []) {
-            return null;
-        }
-
-        return (string) ($users[0]['id'] ?? '');
+        return ['id' => null, 'email' => null];
     }
 }
