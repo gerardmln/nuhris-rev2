@@ -5652,3 +5652,10 @@ LINE 1: select count(*) as aggregate from \"academic_calendar_entries...
 #52 /Users/gerardmln/Laravel Projects/nuhris-rev3/vendor/laravel/framework/src/Illuminate/Foundation/resources/server.php(23): require_once('/Users/gerardml...')
 #53 {main}
 "} 
+[2026-08-20 22:41:44] local.WARNING: Supabase auth sync failed for user creation {"user_id":53,"email":"angelus.malaluan@gmail.com","status":422,"body":"{\"code\":422,\"error_code\":\"email_exists\",\"msg\":\"A user with this email address has already been registered\"}"} 
+[2026-08-20 22:56:24] local.WARNING: Supabase auth sync failed for user creation {"user_id":53,"email":"angelus.malaluan@gmail.com","status":422,"body":"{\"code\":422,\"error_code\":\"email_exists\",\"msg\":\"A user with this email address has already been registered\"}"} 
+[2026-08-20 22:56:51] local.WARNING: Supabase auth sync failed for user creation {"user_id":53,"email":"angelus.malaluan@gmail.com","status":422,"body":"{\"code\":422,\"error_code\":\"email_exists\",\"msg\":\"A user with this email address has already been registered\"}"} 
+[2026-08-20 23:04:32] local.ERROR: Maximum execution time of 30 seconds exceeded {"userId":1,"exception":"[object] (Symfony\\Component\\ErrorHandler\\Error\\FatalError(code: 0): Maximum execution time of 30 seconds exceeded at /Users/gerardmln/Laravel Projects/nuhris-rev3/vendor/laravel/framework/src/Illuminate/Database/Connection.php:440)
+[stacktrace]
+#0 {main}
+"} 
