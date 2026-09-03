@@ -115,7 +115,8 @@
 
     <div data-employee-field="department">
         <label for="department_id" class="mb-1 block text-sm font-semibold text-slate-700">Department *</label>
-        <select id="department_id" name="department_id" data-employee-control="department" class="w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-blue-400 focus:outline-none">
+        <input type="hidden" name="department_id" data-employee-control="department_hidden" value="{{ old('department_id', $employee->department_id ?? '') }}">
+        <select id="department_id" name="department_id" data-employee-control="department" class="w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-blue-400 focus:outline-none disabled:bg-slate-100 disabled:text-slate-500">
             <option value="">Select Department</option>
             @foreach ($departments as $department)
                 <option value="{{ $department->id }}" @selected(old('department_id', $employee->department_id ?? '') == $department->id)>

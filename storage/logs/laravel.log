@@ -5659,3 +5659,4 @@ LINE 1: select count(*) as aggregate from \"academic_calendar_entries...
 [stacktrace]
 #0 {main}
 "} 
+[2026-09-03 23:45:17] local.WARNING: Supabase auth sync failed for user creation {"user_id":55,"email":"malaluangerard@gmail.com","status":422,"body":"{\"code\":422,\"error_code\":\"email_exists\",\"msg\":\"A user with this email address has already been registered\"}"} 

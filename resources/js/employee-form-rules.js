@@ -1,11 +1,17 @@
 const normalize = (value) => String(value ?? '').trim().toLowerCase();
 
 const teachingKeywords = ['professor', 'dean', 'program chair', 'instructor'];
+const shsKeywords = ['(shs)'];
 
 function isTeachingPosition(position) {
     const normalized = normalize(position);
 
-    return teachingKeywords.some((keyword) => normalized.includes(keyword));
+    return teachingKeywords.some((keyword) => normalized.includes(keyword))
+        || shsKeywords.some((keyword) => normalized.includes(keyword));
+}
+
+function isShsPosition(position) {
+    return normalize(position).includes('(shs)');
 }
 
 function isProfessorPosition(position) {
@@ -29,6 +35,18 @@ function rankingPrefixForPosition(position) {
 
     if (normalized.includes('instructor')) {
         return 'instructor';
+    }
+
+    if (normalized.includes('master teacher')) {
+        return 'master teacher';
+    }
+
+    if (normalized.includes('senior teacher')) {
+        return 'senior teacher';
+    }
+
+    if (normalized.includes('teacher')) {
+        return 'teacher';
     }
 
     return '';
@@ -161,12 +179,29 @@ function updateEmployeeFormState(form) {
     const needsDepartment = isTeachingPosition(position);
     const needsRanking = requiresGroupedRanking(position);
 
+    const isShs = isShsPosition(position);
+    const departmentHidden = getControl(form, 'department_hidden');
+
     if (departmentField && departmentControl) {
         departmentField.classList.toggle('hidden', !needsDepartment);
-        departmentControl.required = needsDepartment;
+        departmentControl.required = needsDepartment && !isShs;
+        departmentControl.disabled = isShs;
 
-        if (!needsDepartment) {
+        if (isShs) {
+            const shsOption = Array.from(departmentControl.options).find(
+                (opt) => normalize(opt.textContent).includes('shs')
+            );
+
+            if (shsOption) {
+                departmentControl.value = shsOption.value;
+            }
+        } else if (!needsDepartment) {
             departmentControl.value = '';
+        }
+
+        if (departmentHidden) {
+            departmentHidden.value = departmentControl.value;
+            departmentHidden.disabled = !isShs;
         }
     }
 

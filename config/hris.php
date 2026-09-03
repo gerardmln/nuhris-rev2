@@ -15,6 +15,10 @@ return [
         'Full Professor',
         'Dean',
         'Program Chair',
+        'Teacher (SHS)',
+        'Senior Teacher (SHS)',
+        'Master Teacher (SHS)',
+        'Principal (SHS)',
     ],
 
     'faculty_rankings' => [
@@ -34,6 +38,15 @@ return [
         'Full Professor 2',
         'Full Professor 3',
         'Full Professor 4',
+        'Teacher 1',
+        'Teacher 2',
+        'Teacher 3',
+        'Senior Teacher 1',
+        'Senior Teacher 2',
+        'Senior Teacher 3',
+        'Master Teacher 1',
+        'Master Teacher 2',
+        'Master Teacher 3',
     ],
 
     'admin_support_offices' => [

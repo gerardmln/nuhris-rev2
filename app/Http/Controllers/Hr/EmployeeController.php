@@ -332,6 +332,19 @@ class EmployeeController extends Controller
 
     private function applyDefaultDepartmentForNonTeachingRoles(array $payload): array
     {
+        $position = Str::lower((string) ($payload['position'] ?? ''));
+
+        // SHS positions always belong to the SHS department.
+        if (Str::contains($position, '(shs)')) {
+            $shsDepartmentId = Department::query()->where('name', 'like', 'SHS%')->value('id');
+
+            if (filled($shsDepartmentId)) {
+                $payload['department_id'] = $shsDepartmentId;
+            }
+
+            return $payload;
+        }
+
         // If this is a Faculty employment type, trust whatever school /
         // department the HR picked (SABM, SAHS, SACE, SHS, or ASP). All
         // faculty positions — Instructor, Assistant/Associate/Full
