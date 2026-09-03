@@ -65,7 +65,7 @@
                 options.forEach((option) => {
                     const category = (option.dataset.employmentCategory || '').toLowerCase();
                     const value = (option.value || '').trim().toLowerCase();
-                    const isPartTimeOption = /part\s*[- ]\s*time/.test(value);
+                    const isPartTimeOption = value === 'part-time faculty';
 
                     let disabled = false;
 
