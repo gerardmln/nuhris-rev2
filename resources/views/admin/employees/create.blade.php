@@ -61,8 +61,6 @@
             function updatePositionOptions(form) {
                 const employmentTypeSelect = form.querySelector('[data-employee-control="employment_type"]');
                 const positionSelect = form.querySelector('[data-employee-control="position"]');
-                const departmentField = form.querySelector('[data-employee-field="department"]');
-                const departmentSelect = form.querySelector('[data-employee-control="department"]');
 
                 if (!employmentTypeSelect || !positionSelect) {
                     return;
@@ -70,16 +68,6 @@
 
                 const mode = getMode(employmentTypeSelect.value);
                 const options = Array.from(positionSelect.options);
-                const shouldHideDepartment = !employmentTypeSelect.value && !positionSelect.value;
-
-                if (departmentField) {
-                    departmentField.classList.toggle('hidden', shouldHideDepartment);
-                }
-
-                if (departmentSelect) {
-                    departmentSelect.disabled = shouldHideDepartment;
-                    departmentSelect.required = !shouldHideDepartment && mode === 'part-time-faculty';
-                }
 
                 options.forEach((option) => {
                     const category = (option.dataset.employmentCategory || '').toLowerCase();
@@ -97,6 +85,9 @@
                     }
 
                     option.disabled = disabled;
+                    if (option.value !== '') {
+                        option.hidden = disabled;
+                    }
                 });
 
                 if (positionSelect.value && positionSelect.options[positionSelect.selectedIndex]?.disabled) {

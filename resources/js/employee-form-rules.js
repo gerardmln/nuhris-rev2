@@ -3,11 +3,20 @@ const normalize = (value) => String(value ?? '').trim().toLowerCase();
 const teachingKeywords = ['professor', 'dean', 'program chair', 'instructor'];
 const shsKeywords = ['(shs)'];
 
+function isPartTimeFacultyValue(value) {
+    return normalize(value) === 'part-time faculty';
+}
+
 function isTeachingPosition(position) {
     const normalized = normalize(position);
 
     return teachingKeywords.some((keyword) => normalized.includes(keyword))
-        || shsKeywords.some((keyword) => normalized.includes(keyword));
+        || shsKeywords.some((keyword) => normalized.includes(keyword))
+        || isPartTimeFacultyValue(normalized);
+}
+
+function needsDepartmentSelection(employmentType, position) {
+    return isTeachingPosition(position) || isPartTimeFacultyValue(employmentType);
 }
 
 function isShsPosition(position) {
@@ -103,6 +112,7 @@ function getField(form, name) {
  * Map the selected employment type onto the value each <option data-employment-category>
  * uses, so we can only show the positions that belong to that type.
  *
+ * Part-Time Faculty        -> "part-time-faculty"
  * Faculty                  -> "faculty"
  * Admin Support Personnel  -> "asp"
  */
@@ -111,6 +121,10 @@ function employmentCategory(type) {
 
     if (!normalized) {
         return '';
+    }
+
+    if (isPartTimeFacultyValue(normalized)) {
+        return 'part-time-faculty';
     }
 
     if (normalized.includes('faculty')) {
@@ -122,6 +136,29 @@ function employmentCategory(type) {
     }
 
     return '';
+}
+
+function positionMatchesCategory(option, category) {
+    const optionCategory = option.dataset.employmentCategory || '';
+    const isPartTimeOption = isPartTimeFacultyValue(option.value);
+
+    if (category === '') {
+        return true;
+    }
+
+    if (category === 'part-time-faculty') {
+        return isPartTimeOption;
+    }
+
+    if (category === 'faculty') {
+        return optionCategory === 'faculty' && !isPartTimeOption;
+    }
+
+    if (category === 'asp') {
+        return optionCategory === 'asp';
+    }
+
+    return optionCategory === category;
 }
 
 /**
@@ -140,8 +177,6 @@ function filterPositionOptions(positionControl, employmentType) {
     let selectedStillVisible = false;
 
     options.forEach((option) => {
-        const optionCategory = option.dataset.employmentCategory || '';
-
         // Placeholder (value === "") should always remain selectable.
         if (option.value === '') {
             option.hidden = false;
@@ -149,7 +184,7 @@ function filterPositionOptions(positionControl, employmentType) {
             return;
         }
 
-        const matches = category === '' || optionCategory === category;
+        const matches = positionMatchesCategory(option, category);
         option.hidden = !matches;
         option.disabled = !matches;
 
@@ -176,7 +211,7 @@ function updateEmployeeFormState(form) {
     const rankingField = getField(form, 'ranking');
     const rankingControl = getControl(form, 'ranking');
 
-    const needsDepartment = isTeachingPosition(position);
+    const needsDepartment = needsDepartmentSelection(employmentType, position);
     const needsRanking = requiresGroupedRanking(position);
 
     const isShs = isShsPosition(position);

@@ -5660,3 +5660,5 @@ LINE 1: select count(*) as aggregate from \"academic_calendar_entries...
 #0 {main}
 "} 
 [2026-09-03 23:45:17] local.WARNING: Supabase auth sync failed for user creation {"user_id":55,"email":"malaluangerard@gmail.com","status":422,"body":"{\"code\":422,\"error_code\":\"email_exists\",\"msg\":\"A user with this email address has already been registered\"}"} 
+[2026-09-04 00:19:33] local.WARNING: Supabase auth sync failed for user creation {"user_id":57,"email":"donoharmbygrd@gmail.com","status":422,"body":"{\"code\":422,\"error_code\":\"email_exists\",\"msg\":\"A user with this email address has already been registered\"}"} 
+[2026-09-04 12:08:26] local.WARNING: Supabase auth sync failed for user creation {"user_id":56,"email":"malaluangerard@gmail.com","status":422,"body":"{\"code\":422,\"error_code\":\"email_exists\",\"msg\":\"A user with this email address has already been registered\"}"} 
